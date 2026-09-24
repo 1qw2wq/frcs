@@ -235,8 +235,72 @@ async function ensureSchema() {
       data JSONB NOT NULL,
       PRIMARY KEY (collection, id)
     );
+
+    CREATE TABLE IF NOT EXISTS member_accounts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      name_key TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      password_salt TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      last_login_at TEXT
+    );
   `);
   g.__frcPgInit = true;
+}
+
+export type MemberAccountRow = {
+  id: string;
+  name: string;
+  name_key: string;
+  password_hash: string;
+  password_salt: string;
+  created_at: string;
+  last_login_at: string | null;
+};
+
+export async function memberFindByNameKey(nameKey: string): Promise<MemberAccountRow | null> {
+  await ensureSchema();
+  const rows = await q<MemberAccountRow>(
+    `SELECT id, name, name_key, password_hash, password_salt, created_at, last_login_at
+     FROM member_accounts WHERE name_key = $1 LIMIT 1`,
+    [nameKey]
+  );
+  return rows[0] || null;
+}
+
+export async function memberInsert(input: {
+  id: string;
+  name: string;
+  nameKey: string;
+  passwordHash: string;
+  passwordSalt: string;
+  createdAt: string;
+}): Promise<void> {
+  await ensureSchema();
+  await exec(
+    `INSERT INTO member_accounts (id, name, name_key, password_hash, password_salt, created_at, last_login_at)
+     VALUES ($1,$2,$3,$4,$5,$6,NULL)`,
+    [input.id, input.name, input.nameKey, input.passwordHash, input.passwordSalt, input.createdAt]
+  );
+}
+
+export async function memberTouchLogin(id: string, ts: string): Promise<void> {
+  await ensureSchema();
+  await exec(`UPDATE member_accounts SET last_login_at = $1 WHERE id = $2`, [ts, id]);
+}
+
+export async function memberListAll(): Promise<MemberAccountRow[]> {
+  await ensureSchema();
+  return q<MemberAccountRow>(
+    `SELECT id, name, name_key, password_hash, password_salt, created_at, last_login_at
+     FROM member_accounts ORDER BY name ASC`
+  );
+}
+
+export async function memberClearAll(): Promise<void> {
+  await ensureSchema();
+  await exec(`DELETE FROM member_accounts`);
 }
 
 function parseJsonArray(val: any): any[] {
@@ -792,6 +856,7 @@ export async function clearAllData(): Promise<{ cleared: string[]; timestamp: st
     'matches',
     'teams',
     'collection_items',
+    'member_accounts',
   ];
   for (const t of tables) {
     await exec(`DELETE FROM ${t}`);

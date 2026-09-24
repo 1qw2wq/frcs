@@ -175,3 +175,18 @@ INSERT INTO access_keys (role, key_value, permissions, status, updated_at) VALUE
   ('administrator', 'FRC-ADMIN-2025', 'ALL: READ, WRITE, SQL_EXEC, ADMIN_KEY_MGMT, CLEAR_DATA', 'Active', NOW()::text),
   ('member', 'FRC-MEMBER-TEAM', 'SCOUT_SUBMIT, VIEW_STATS, PIT_VIEW, PICKLIST_READ', 'Active', NOW()::text)
 ON CONFLICT (role) DO NOTHING;
+
+-- Member personal accounts (name + password hash; shared member token only at register)
+CREATE TABLE IF NOT EXISTS member_accounts (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  name_key TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  password_salt TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  last_login_at TEXT
+);
+
+DO $$ BEGIN
+  CREATE POLICY "public_all_member_accounts" ON member_accounts FOR ALL USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;

@@ -67,8 +67,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter }) => {
             </span>
           </h1>
           <p className="mt-5 max-w-2xl text-sm leading-relaxed text-slate-400 sm:text-base">
-            Dual-key access for administrators and members. Live match scouting, pit specs, analytics,
-            and a SQL-backed data layer — local SQLite or Supabase cloud.
+            Admins sign in with an access token. Members register once with their name, a personal
+            password, and the shared member token — then sign in with name + password only. Live
+            scouting, pit specs, analytics, and SQL (SQLite or Supabase Postgres).
           </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">

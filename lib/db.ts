@@ -239,6 +239,17 @@ function initSchema(db: Database.Database) {
       data TEXT NOT NULL,
       PRIMARY KEY (collection, id)
     );
+
+    -- Member personal accounts (name + password; shared member token only at register)
+    CREATE TABLE IF NOT EXISTS member_accounts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      name_key TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      password_salt TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      last_login_at TEXT
+    );
   `);
 }
 
@@ -861,6 +872,7 @@ export function clearAllData(): { cleared: string[]; timestamp: string } {
     'matches',
     'teams',
     'collection_items',
+    'member_accounts',
   ];
   const tx = db.transaction(() => {
     for (const t of tables) {

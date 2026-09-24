@@ -62,7 +62,10 @@ function DashboardContent() {
     logout,
     activeKey,
     sqlConnectionKey,
+    memberProfile,
   } = useAuthKey();
+
+  const memberDisplayName = memberProfile?.displayName || memberProfile?.name || 'Team Member';
 
   // Separate home tabs per role — no shared Student/Admin toggle
   const [currentTab, setCurrentTab] = useState<string>('student-home');
@@ -313,7 +316,7 @@ function DashboardContent() {
       teamNumber: entry.teamNumber || prefilledTeam,
       alliance: entry.alliance || prefilledAlliance,
       driverStation: entry.driverStation || 1,
-      scoutName: entry.scoutName || 'Maya Patel',
+      scoutName: entry.scoutName || memberDisplayName || 'Scout Member',
       timestamp: entry.timestamp || new Date().toISOString(),
       autoLeave: entry.autoLeave || false,
       autoCoralL1: entry.autoCoralL1 || 0,
@@ -509,7 +512,7 @@ function DashboardContent() {
                       FRC MATCH & PIT SCOUTING CONSOLE
                     </h2>
                     <p className="text-[10px] font-mono text-slate-400">
-                      {isAdmin ? 'ADMIN' : 'MEMBER'} · {backendLabel} Backend
+                      {isAdmin ? 'ADMIN' : memberDisplayName} · {backendLabel} Backend
                     </p>
                   </div>
                 </div>
@@ -681,8 +684,12 @@ function DashboardContent() {
               onOpenKiosk={isAdmin ? () => setIsKioskOpen(true) : undefined}
               isCheckedIn={isCheckedIn}
               onOpenNfc={() => setIsNfcOpen(true)}
-              studentName="Maya Patel"
-              roleTitle={isAdmin ? 'Administrator · Full Access' : 'Team Member · Student Portal'}
+              studentName={isAdmin ? 'Administrator' : memberDisplayName}
+              roleTitle={
+                isAdmin
+                  ? 'Administrator · Full Access'
+                  : `${memberDisplayName} · Member Portal`
+              }
               onOpenRoleSwitcher={() => openAuthModal()}
               isAdmin={isAdmin}
               onLogout={logout}
