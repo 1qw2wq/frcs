@@ -31,7 +31,7 @@ export const LeadOverviewView: React.FC<LeadOverviewViewProps> = ({ roster, onOp
           onClick={onOpenKiosk}
           className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs font-mono shadow-md shadow-blue-600/30 transition self-start sm:self-auto"
         >
-          Launch Entryway Kiosk
+          Open floor log
         </button>
       </div>
 

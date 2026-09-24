@@ -14,13 +14,13 @@ import { LeadOverviewView } from '@/components/team-central/LeadOverviewView';
 import { SubteamView } from '@/components/team-central/SubteamView';
 import { EngineeringNotesAndDemosView } from '@/components/team-central/EngineeringNotesAndDemosView';
 
-import { NfcScanModal } from '@/components/team-central/NfcScanModal';
+import { FloorEntryModal } from '@/components/team-central/FloorEntryModal';
+import { AdminFloorCodesPanel } from '@/components/team-central/AdminFloorCodesPanel';
 import { RequestMachineModal } from '@/components/team-central/RequestMachineModal';
 import { HourAppealModal } from '@/components/team-central/HourAppealModal';
 import { FirstSyncModal } from '@/components/team-central/FirstSyncModal';
 import { RequestTrainingModal } from '@/components/team-central/RequestTrainingModal';
 import { TaskDetailModal } from '@/components/team-central/TaskDetailModal';
-import { KioskModal } from '@/components/team-central/KioskModal';
 import { KeyAuthModal } from '@/components/KeyAuthModal';
 import { KeyManagementModal } from '@/components/KeyManagementModal';
 
@@ -96,13 +96,13 @@ function DashboardContent() {
   const [loggedHours, setLoggedHours] = useState<number>(0);
   const [isCheckedIn, setIsCheckedIn] = useState<boolean>(false);
 
-  const [isNfcOpen, setIsNfcOpen] = useState(false);
+  const [isFloorEntryOpen, setIsFloorEntryOpen] = useState(false);
   const [isMachineModalOpen, setIsMachineModalOpen] = useState(false);
   const [isHourAppealOpen, setIsHourAppealOpen] = useState(false);
   const [isFirstSyncOpen, setIsFirstSyncOpen] = useState(false);
   const [isTrainingModalOpen, setIsTrainingModalOpen] = useState(false);
-  const [isKioskOpen, setIsKioskOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<SubsystemTask | null>(null);
+  const [lastEntryTime, setLastEntryTime] = useState<string | null>(null);
 
   const [scoutingTab, setScoutingTab] = useState<string>('matches');
   const [teams, setTeams] = useState<FrcTeam[]>([]);
@@ -181,30 +181,49 @@ function DashboardContent() {
     fetchData();
   }, []);
 
-  const handleToggleMyCheckIn = () => {
-    setIsCheckedIn((prev) => {
-      const next = !prev;
-      setRoster((currentRoster) =>
-        currentRoster.map((m) => (m.id === 'm-1' ? { ...m, isCheckedIn: next } : m))
-      );
-      if (!next) {
-        setLoggedHours((h) => Math.round((h + 0.5) * 10) / 10);
-      }
-      return next;
-    });
-  };
-
   const handleToggleStudentCheckIn = (studentId: string) => {
+    // Admin-only roster flag toggle (no PIN/NFC). Prefer entry-code log for real time tracking.
     setRoster((currentRoster) =>
       currentRoster.map((m) => {
         if (m.id === studentId) {
-          const nextState = !m.isCheckedIn;
-          if (m.id === 'm-1') setIsCheckedIn(nextState);
-          return { ...m, isCheckedIn: nextState };
+          return { ...m, isCheckedIn: !m.isCheckedIn };
         }
         return m;
       })
     );
+  };
+
+  const handleRedeemFloorCode = async (code: string) => {
+    const name = memberDisplayName;
+    const res = await fetch('/api/floor', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        action: 'redeem',
+        code,
+        memberName: name,
+        memberId: memberProfile?.id,
+        accessKey: activeKey,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.success) {
+      return { success: false, message: body.message || body.error || 'Invalid entry code' };
+    }
+    if (body.dataset) applyDataset(body.dataset);
+    else if (body.floorLog) setFloorLog(body.floorLog);
+    else {
+      const refreshed = await fetch('/api/data', { cache: 'no-store' });
+      if (refreshed.ok) applyDataset(await refreshed.json());
+    }
+    const t = body.entry?.checkInTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setLastEntryTime(t);
+    setIsCheckedIn(true);
+    return {
+      success: true,
+      message: body.message || `Enter time logged at ${t}`,
+      checkInTime: t,
+    };
   };
 
   const handleHourAppealSubmitted = (appeal: HourAppealRecord) => {
@@ -681,9 +700,9 @@ function DashboardContent() {
           <div className="flex-1 flex flex-col min-w-0 bg-[#070A10]">
             <TopBar
               shopOccupancy={shopOccupancy}
-              onOpenKiosk={isAdmin ? () => setIsKioskOpen(true) : undefined}
               isCheckedIn={isCheckedIn}
-              onOpenNfc={() => setIsNfcOpen(true)}
+              onOpenFloorEntry={() => setIsFloorEntryOpen(true)}
+              lastEntryTime={lastEntryTime}
               studentName={isAdmin ? 'Administrator' : memberDisplayName}
               roleTitle={
                 isAdmin
@@ -710,9 +729,9 @@ function DashboardContent() {
                   {currentTab === 'student-home' && !isAdmin && (
                     <StudentHome
                       certifications={certifications}
-                      schedule={INITIAL_BUILD_SCHEDULE}
+                      schedule={roster.length || tasks.length ? INITIAL_BUILD_SCHEDULE : []}
                       tasks={tasks}
-                      onOpenNfc={() => setIsNfcOpen(true)}
+                      onOpenFloorEntry={() => setIsFloorEntryOpen(true)}
                       onOpenMachineRequest={() => setIsMachineModalOpen(true)}
                       onOpenHourAppeal={() => setIsHourAppealOpen(true)}
                       onOpenFirstSync={() => setIsFirstSyncOpen(true)}
@@ -720,6 +739,8 @@ function DashboardContent() {
                       onSelectTask={(task) => setSelectedTask(task)}
                       loggedHours={loggedHours}
                       isCheckedIn={isCheckedIn}
+                      memberName={memberDisplayName}
+                      lastEntryTime={lastEntryTime}
                     />
                   )}
 
@@ -751,10 +772,10 @@ function DashboardContent() {
 
                   {/* Admin-only */}
                   {currentTab === 'lead-overview' && isAdmin && (
-                    <LeadOverviewView
-                      roster={roster}
-                      onOpenKiosk={() => setIsKioskOpen(true)}
-                    />
+                    <div className="space-y-5">
+                      <AdminFloorCodesPanel accessKey={activeKey} />
+                      <LeadOverviewView roster={roster} onOpenKiosk={() => setCurrentTab('live-floor-log')} />
+                    </div>
                   )}
 
                   {currentTab === 'all-members' && isAdmin && (
@@ -773,29 +794,20 @@ function DashboardContent() {
                   )}
 
                   {currentTab === 'live-floor-log' && isAdmin && (
-                    <LiveFloorLogView
-                      floorLog={floorLog}
-                      machineReservations={machineReservations}
-                      onOpenKiosk={() => setIsKioskOpen(true)}
-                      onOpenMachineRequest={() => setIsMachineModalOpen(true)}
-                    />
+                    <div className="space-y-5">
+                      <AdminFloorCodesPanel accessKey={activeKey} />
+                      <LiveFloorLogView
+                        floorLog={floorLog}
+                        machineReservations={machineReservations}
+                        onOpenKiosk={() => undefined}
+                        onOpenMachineRequest={() => setIsMachineModalOpen(true)}
+                      />
+                    </div>
                   )}
 
                   {currentTab === 'kiosk-eligibility' && isAdmin && (
                     <div className="space-y-4">
-                      <div className="p-6 rounded-2xl bg-[#0F172A] border border-slate-800 text-center space-y-4">
-                        <h2 className="text-xl font-bold text-white">Shop Entryway Kiosk</h2>
-                        <p className="text-xs text-slate-400 max-w-lg mx-auto font-mono">
-                          Fullscreen kiosk for shop entryway check-in.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => setIsKioskOpen(true)}
-                          className="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs font-mono uppercase tracking-wider shadow-lg shadow-amber-600/30 transition cursor-pointer"
-                        >
-                          Open Kiosk
-                        </button>
-                      </div>
+                      <AdminFloorCodesPanel accessKey={activeKey} />
                       <AllMembersView
                         roster={roster}
                         onToggleStudentCheckIn={handleToggleStudentCheckIn}
@@ -823,13 +835,11 @@ function DashboardContent() {
         </div>
       )}
 
-      <NfcScanModal
-        isOpen={isNfcOpen}
-        onClose={() => setIsNfcOpen(false)}
-        isCheckedIn={isCheckedIn}
-        onToggleCheckIn={handleToggleMyCheckIn}
-        studentName="Maya Patel"
-        studentId="#5419-STU-0042"
+      <FloorEntryModal
+        isOpen={isFloorEntryOpen}
+        onClose={() => setIsFloorEntryOpen(false)}
+        memberName={memberDisplayName}
+        onRedeem={handleRedeemFloorCode}
       />
 
       <RequestMachineModal
@@ -858,24 +868,61 @@ function DashboardContent() {
         onUpdateTask={handleUpdateTask}
       />
 
-      <KioskModal
-        isOpen={isKioskOpen && isAdmin}
-        onClose={() => setIsKioskOpen(false)}
-        roster={roster}
-        floorLog={floorLog}
-        onToggleStudentCheckIn={handleToggleStudentCheckIn}
-      />
-
       <KeyAuthModal />
       <KeyManagementModal />
     </div>
   );
 }
 
+class ClientErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('Client error boundary:', error);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[#070A10] p-6 text-center">
+          <div className="max-w-md space-y-3 rounded-2xl border border-rose-500/30 bg-rose-950/20 p-8">
+            <h1 className="text-lg font-bold text-white">Something went wrong</h1>
+            <p className="text-xs font-mono text-rose-200/90 break-words">{this.state.error.message}</p>
+            <button
+              type="button"
+              className="mt-2 rounded-xl bg-cyan-600 px-4 py-2 text-xs font-semibold text-white"
+              onClick={() => {
+                try {
+                  localStorage.clear();
+                } catch {
+                  /* ignore */
+                }
+                window.location.reload();
+              }}
+            >
+              Clear session & reload
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function Page() {
   return (
     <AuthKeyProvider>
-      <DashboardContent />
+      <ClientErrorBoundary>
+        <DashboardContent />
+      </ClientErrorBoundary>
     </AuthKeyProvider>
   );
 }

@@ -1,40 +1,44 @@
 'use client';
 
 import React from 'react';
-import Image from 'next/image';
-import { Bell, IdCard, Radio, LogOut, KeyRound } from 'lucide-react';
+import { Bell, IdCard, LogOut, KeyRound, Clock } from 'lucide-react';
 
 interface TopBarProps {
   shopOccupancy: number;
-  onOpenKiosk?: () => void;
   isCheckedIn: boolean;
-  onOpenNfc: () => void;
+  onOpenFloorEntry?: () => void;
   studentName?: string;
   roleTitle?: string;
   onOpenRoleSwitcher?: () => void;
   isAdmin?: boolean;
   onLogout?: () => void;
   onManageKeys?: () => void;
-  /** Hide student-only controls on admin console */
   showFloorControls?: boolean;
+  lastEntryTime?: string | null;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
   shopOccupancy,
-  onOpenKiosk,
   isCheckedIn,
-  onOpenNfc,
-  studentName = 'Maya Patel',
+  onOpenFloorEntry,
+  studentName = 'Team Member',
   roleTitle = 'MEMBER',
   onOpenRoleSwitcher,
   isAdmin = false,
   onLogout,
   onManageKeys,
   showFloorControls = true,
+  lastEntryTime = null,
 }) => {
+  const initials = String(studentName || 'TM')
+    .split(/\s+/)
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-800/80 bg-[#0B0F17]/90 px-4 shadow-lg shadow-black/10 backdrop-blur-xl sm:px-6">
-      {/* Left: role identity only (no Student/Admin toggle) */}
       <div className="flex items-center gap-3">
         <div
           className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-mono font-bold ${
@@ -49,45 +53,39 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           type="button"
           onClick={onOpenRoleSwitcher}
-          title="Switch access key"
+          title="Switch access"
           className="hidden items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-1.5 font-mono text-xs text-slate-400 transition hover:border-slate-600 hover:text-white md:flex"
         >
           <span className="max-w-[220px] truncate">{roleTitle}</span>
         </button>
       </div>
 
-      {/* Right */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {isAdmin && onOpenKiosk && (
-          <div className="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/90 py-1 pl-3 pr-1.5 font-mono text-xs">
+        {isAdmin && (
+          <div className="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/90 py-1 px-3 font-mono text-xs">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
             </span>
-            <span className="whitespace-nowrap font-bold text-slate-200">{shopOccupancy} IN SHOP</span>
-            <button
-              type="button"
-              onClick={onOpenKiosk}
-              className="rounded-full bg-amber-600 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-amber-500 active:scale-95"
-            >
-              KIOSK
-            </button>
+            <span className="whitespace-nowrap font-bold text-slate-200">
+              {shopOccupancy} IN SHOP
+            </span>
           </div>
         )}
 
-        {showFloorControls && !isAdmin && (
+        {showFloorControls && !isAdmin && onOpenFloorEntry && (
           <button
             type="button"
-            onClick={onOpenNfc}
-            title={isCheckedIn ? 'Currently clocked in' : 'Clock in/out'}
+            onClick={onOpenFloorEntry}
+            title={isCheckedIn ? `On floor${lastEntryTime ? ` since ${lastEntryTime}` : ''}` : 'Log floor entry with admin code'}
             className={`hidden items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-xs transition sm:flex ${
               isCheckedIn
                 ? 'border-emerald-800/80 bg-emerald-950/60 text-emerald-300'
-                : 'border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200'
+                : 'border-cyan-800/60 bg-cyan-950/40 text-cyan-300 hover:border-cyan-500/50'
             }`}
           >
-            <Radio className={`h-3 w-3 ${isCheckedIn ? 'animate-pulse text-emerald-400' : 'text-slate-500'}`} />
-            <span>{isCheckedIn ? 'ON FLOOR' : 'OFF FLOOR'}</span>
+            <Clock className={`h-3 w-3 ${isCheckedIn ? 'text-emerald-400' : 'text-cyan-400'}`} />
+            <span>{isCheckedIn ? (lastEntryTime ? `IN ${lastEntryTime}` : 'ON FLOOR') : 'LOG ENTRY'}</span>
           </button>
         )}
 
@@ -97,7 +95,6 @@ export const TopBar: React.FC<TopBarProps> = ({
           aria-label="Notifications"
         >
           <Bell className="h-4 w-4" />
-          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-[#0B0F17]" />
         </button>
 
         {onManageKeys && isAdmin && (
@@ -124,18 +121,13 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         <div className="flex items-center gap-2.5 pl-1">
           <div
-            className={`relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-800 ring-2 ${
-              isAdmin ? 'ring-amber-500/50' : 'ring-cyan-500/40'
+            className={`relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold ${
+              isAdmin
+                ? 'bg-amber-500/20 text-amber-200 ring-2 ring-amber-500/50'
+                : 'bg-cyan-500/20 text-cyan-200 ring-2 ring-cyan-500/40'
             }`}
           >
-            <Image
-              src="/assets/maya_patel.jpg"
-              alt={studentName}
-              fill
-              sizes="36px"
-              className="object-cover"
-              referrerPolicy="no-referrer"
-            />
+            {initials || 'TM'}
           </div>
           <div className="hidden text-left leading-tight sm:block">
             <p className="text-xs font-bold text-white">{studentName}</p>

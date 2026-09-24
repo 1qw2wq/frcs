@@ -465,6 +465,31 @@ async function getCollection<T extends { id: string }>(collection: string): Prom
   });
 }
 
+/** Public helpers for dynamic collections (floor codes, etc.) */
+export async function getCollectionItems<T extends { id: string }>(collection: string): Promise<T[]> {
+  await ensureSchema();
+  return getCollection<T>(collection);
+}
+
+export async function putCollectionItem(
+  collection: string,
+  item: { id: string } & Record<string, any>
+): Promise<void> {
+  await ensureSchema();
+  const id = String(item.id);
+  await exec(
+    `INSERT INTO collection_items (collection, id, data) VALUES ($1, $2, $3::jsonb)
+     ON CONFLICT (collection, id) DO UPDATE SET data = EXCLUDED.data`,
+    [collection, id, JSON.stringify({ ...item, id })]
+  );
+  await exec(`DELETE FROM meta WHERE key = 'cleared_at'`);
+}
+
+export async function deleteCollectionItem(collection: string, id: string): Promise<void> {
+  await ensureSchema();
+  await exec(`DELETE FROM collection_items WHERE collection = $1 AND id = $2`, [collection, id]);
+}
+
 async function seedDefaults() {
   for (const t of INITIAL_TEAMS) {
     await exec(

@@ -60,8 +60,28 @@ export interface FloorCheckIn {
   studentId: string;
   subteam: string;
   checkInTime: string;
+  /** ISO timestamp preferred for sorting */
+  checkInAt?: string;
   activeMachine?: string;
   hoursToday: number;
+  /** Admin-issued entry code used for this check-in */
+  entryCode?: string;
+  memberAccountId?: string;
+}
+
+/** Admin-generated one-time (or multi-use session) pit/floor entry code */
+export interface FloorEntryCode {
+  id: string;
+  code: string;
+  label: string;
+  createdAt: string;
+  createdBy: string;
+  expiresAt: string | null;
+  maxUses: number;
+  useCount: number;
+  active: boolean;
+  lastUsedAt: string | null;
+  lastUsedBy: string | null;
 }
 
 export interface EngineeringNote {

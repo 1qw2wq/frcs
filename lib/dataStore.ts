@@ -130,6 +130,7 @@ async function supabaseClearTeamCentral() {
       'tasks',
       'roster',
       'floor_log',
+      'floor_entry_codes',
       'engineering_notes',
       'outreach_demos',
       'machine_reservations',
@@ -617,11 +618,13 @@ export async function clearAllData(): Promise<{ cleared: string[]; timestamp: st
     'roster',
     'tasks',
     'floor_log',
+    'floor_entry_codes',
     'engineering_notes',
     'outreach_demos',
     'machine_reservations',
     'hour_appeals',
     'certifications',
+    'member_accounts',
   ];
 
   if (pg.isPostgresConfigured()) {

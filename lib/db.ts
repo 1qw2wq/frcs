@@ -258,6 +258,7 @@ const TEAM_CENTRAL_COLLECTIONS = [
   'tasks',
   'roster',
   'floor_log',
+  'floor_entry_codes',
   'engineering_notes',
   'outreach_demos',
   'machine_reservations',
@@ -347,6 +348,30 @@ function getCollection<T extends { id: string }>(collection: string): T[] {
       return null;
     }
   }).filter(Boolean) as T[];
+}
+
+/** Public helpers for dynamic collections (floor codes, etc.) */
+export function getCollectionItems<T extends { id: string }>(collection: string): T[] {
+  getDb(); // ensure schema
+  return getCollection<T>(collection);
+}
+
+export function putCollectionItem(collection: string, item: { id: string } & Record<string, any>): void {
+  const db = getDb();
+  const id = String(item.id);
+  db.prepare(
+    `INSERT OR REPLACE INTO collection_items (collection, id, data) VALUES (?, ?, ?)`
+  ).run(collection, id, JSON.stringify({ ...item, id }));
+  try {
+    db.prepare(`DELETE FROM meta WHERE key = 'cleared_at'`).run();
+  } catch {
+    /* ignore */
+  }
+}
+
+export function deleteCollectionItem(collection: string, id: string): void {
+  const db = getDb();
+  db.prepare(`DELETE FROM collection_items WHERE collection = ? AND id = ?`).run(collection, id);
 }
 
 function seedDefaults(db: Database.Database) {

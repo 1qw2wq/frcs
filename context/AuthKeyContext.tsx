@@ -63,28 +63,47 @@ interface AuthKeyContextType {
 
 const AuthKeyContext = createContext<AuthKeyContextType | undefined>(undefined);
 
-function persistSession(role: UserRole, accessToken: string, profile: MemberProfile | null) {
+function safeStorageGet(key: string): string | null {
   try {
-    localStorage.setItem('frc_auth_role', role);
-    localStorage.setItem('frc_auth_key', accessToken);
-    if (profile) {
-      localStorage.setItem('frc_member_profile', JSON.stringify(profile));
-    } else {
-      localStorage.removeItem('frc_member_profile');
-    }
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeStorageSet(key: string, value: string) {
+  try {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(key, value);
   } catch {
     /* ignore */
   }
 }
 
-function clearSession() {
+function safeStorageRemove(key: string) {
   try {
-    localStorage.removeItem('frc_auth_role');
-    localStorage.removeItem('frc_auth_key');
-    localStorage.removeItem('frc_member_profile');
+    if (typeof window === 'undefined') return;
+    window.localStorage.removeItem(key);
   } catch {
     /* ignore */
   }
+}
+
+function persistSession(role: UserRole, accessToken: string, profile: MemberProfile | null) {
+  safeStorageSet('frc_auth_role', role);
+  safeStorageSet('frc_auth_key', accessToken);
+  if (profile) {
+    safeStorageSet('frc_member_profile', JSON.stringify(profile));
+  } else {
+    safeStorageRemove('frc_member_profile');
+  }
+}
+
+function clearSession() {
+  safeStorageRemove('frc_auth_role');
+  safeStorageRemove('frc_auth_key');
+  safeStorageRemove('frc_member_profile');
 }
 
 export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
@@ -143,12 +162,12 @@ export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
         // localStorage key overrides only when server env has no keys configured
         // (admin key-management UI). Never used as hardcoded defaults.
         if (!fromEnv) {
-          const savedAdmin = localStorage.getItem('frc_admin_key');
-          const savedMember = localStorage.getItem('frc_member_key');
+          const savedAdmin = safeStorageGet('frc_admin_key');
+          const savedMember = safeStorageGet('frc_member_key');
           if (savedAdmin) adminK = savedAdmin;
           if (savedMember) memberK = savedMember;
         }
-        const savedSql = localStorage.getItem('frc_sql_connection_key');
+        const savedSql = safeStorageGet('frc_sql_connection_key');
         if (savedSql) setSqlConnectionKeyInternal(savedSql);
       } catch {
         /* ignore */
@@ -161,11 +180,11 @@ export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
       });
 
       try {
-        const savedRole = localStorage.getItem('frc_auth_role') as UserRole | null;
-        const savedActiveKey = localStorage.getItem('frc_auth_key');
+        const savedRole = safeStorageGet('frc_auth_role') as UserRole | null;
+        const savedActiveKey = safeStorageGet('frc_auth_key');
         let savedProfile: MemberProfile | null = null;
         try {
-          const raw = localStorage.getItem('frc_member_profile');
+          const raw = safeStorageGet('frc_member_profile');
           if (raw) savedProfile = JSON.parse(raw);
         } catch {
           savedProfile = null;
@@ -463,11 +482,11 @@ export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
     setKeys(updated);
     setActiveKey(cleanAdmin);
     try {
-      localStorage.setItem('frc_admin_key', cleanAdmin);
-      localStorage.setItem('frc_member_key', cleanMember);
-      localStorage.setItem('frc_auth_key', cleanAdmin);
-      localStorage.setItem('frc_auth_role', 'admin');
-      localStorage.removeItem('frc_member_profile');
+      safeStorageSet('frc_admin_key', cleanAdmin);
+      safeStorageSet('frc_member_key', cleanMember);
+      safeStorageSet('frc_auth_key', cleanAdmin);
+      safeStorageSet('frc_auth_role', 'admin');
+      safeStorageRemove('frc_member_profile');
     } catch {}
 
     return { success: true, message: 'Access keys updated for this browser session.' };
@@ -477,7 +496,7 @@ export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
     const trimmed = key.trim();
     setSqlConnectionKeyInternal(trimmed);
     try {
-      localStorage.setItem('frc_sql_connection_key', trimmed);
+      safeStorageSet('frc_sql_connection_key', trimmed);
     } catch {}
   };
 
