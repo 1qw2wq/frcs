@@ -32,6 +32,7 @@ import { TeamAnalytics } from '@/components/TeamAnalytics';
 import { PicklistBuilder } from '@/components/PicklistBuilder';
 import { RobotTelemetry } from '@/components/RobotTelemetry';
 import { SqlServerManager } from '@/components/SqlServerManager';
+import { ScoutingTeamsPanel } from '@/components/ScoutingTeamsPanel';
 
 import { INITIAL_BUILD_SCHEDULE } from '@/lib/teamCentralData';
 import {
@@ -149,7 +150,16 @@ function DashboardContent() {
     if (data.isCheckedIn !== undefined) setIsCheckedIn(data.isCheckedIn);
 
     if (data.backend?.engine) {
-      setBackendLabel(data.backend.engine === 'supabase' ? 'Supabase' : 'SQLite');
+      const eng = data.backend.engine;
+      setBackendLabel(
+        eng === 'postgres'
+          ? 'Postgres'
+          : eng === 'supabase'
+            ? 'Supabase'
+            : eng === 'sqlite'
+              ? 'SQLite'
+              : String(eng)
+      );
     }
   };
 
@@ -386,6 +396,56 @@ function DashboardContent() {
     }
   };
 
+  const handleAddScoutingTeam = async (input: {
+    number: number;
+    name: string;
+    organization?: string;
+    location?: string;
+  }) => {
+    if (!isAdmin && !isMember) throw new Error('Sign in with a member or admin key to add teams.');
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        type: 'addTeam',
+        data: input,
+        accessKey: activeKey,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'Failed to add team');
+    if (body.dataset) applyDataset(body.dataset);
+    else {
+      const refreshed = await fetch('/api/data', { cache: 'no-store' });
+      if (refreshed.ok) applyDataset(await refreshed.json());
+    }
+    setSelectedTeamNumber(input.number);
+    setPrefilledTeam(input.number);
+  };
+
+  const handleDeleteScoutingTeam = async (teamNumber: number) => {
+    if (!isAdmin && !isMember) throw new Error('Sign in with a member or admin key to delete teams.');
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        type: 'deleteTeam',
+        data: { number: teamNumber },
+        accessKey: activeKey,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'Failed to delete team');
+    if (body.dataset) applyDataset(body.dataset);
+    else {
+      const refreshed = await fetch('/api/data', { cache: 'no-store' });
+      if (refreshed.ok) applyDataset(await refreshed.json());
+    }
+    if (selectedTeamNumber === teamNumber) {
+      setSelectedTeamNumber(0);
+    }
+  };
+
   const handleSqlDatasetChange = (dataset: Record<string, any>) => {
     applyDataset(dataset as any);
   };
@@ -498,12 +558,32 @@ function DashboardContent() {
                   if (!isAdmin && (tab === 'sql' || tab === 'picklist')) return;
                   setScoutingTab(tab);
                 }}
-                sqlStatus={sqlConnectionKey || backendLabel === 'Supabase' ? 'connected' : 'local_fallback'}
+                sqlStatus={
+                  sqlConnectionKey ||
+                  backendLabel === 'Supabase' ||
+                  backendLabel === 'Postgres'
+                    ? 'connected'
+                    : 'local_fallback'
+                }
               />
             </div>
           </header>
 
-          <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6">
+          <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6 space-y-5">
+            {(isAdmin || isMember) &&
+              (scoutingTab === 'matches' ||
+                scoutingTab === 'scout-match' ||
+                scoutingTab === 'scout-pit' ||
+                scoutingTab === 'analytics') && (
+                <ScoutingTeamsPanel
+                  teams={teams}
+                  onAddTeam={handleAddScoutingTeam}
+                  onDeleteTeam={handleDeleteScoutingTeam}
+                  canManage={isAdmin || isMember}
+                  compact={scoutingTab !== 'matches' && scoutingTab !== 'scout-match'}
+                />
+              )}
+
             <AnimatePresence mode="wait">
               <motion.div
                 key={scoutingTab}

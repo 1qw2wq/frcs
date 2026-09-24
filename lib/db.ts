@@ -264,6 +264,10 @@ function seedIfEmpty(db: Database.Database) {
     /* meta may be missing on brand-new file before schema — continue */
   }
 
+  const startClean = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.FRC_START_CLEAN || process.env.START_CLEAN || '').toLowerCase()
+  );
+
   const row = db.prepare('SELECT COUNT(*) AS c FROM teams').get() as { c: number };
   let rosterCount = 0;
   try {
@@ -278,7 +282,7 @@ function seedIfEmpty(db: Database.Database) {
 
   // Full seed when empty, or backfill Team Central collections on upgraded DBs
   if (row.c > 0 && rosterCount > 0) return;
-  if (row.c > 0 && rosterCount === 0) {
+  if (row.c > 0 && rosterCount === 0 && !startClean) {
     // Only backfill collections — do not wipe scouting data
     const tx = db.transaction(() => {
       putCollection(db, 'certifications', INITIAL_CERTIFICATIONS);
@@ -293,7 +297,19 @@ function seedIfEmpty(db: Database.Database) {
     tx();
     return;
   }
-  seedDefaults(db);
+  if (row.c === 0) {
+    if (startClean) {
+      try {
+        db.prepare(
+          `INSERT OR REPLACE INTO meta (key, value) VALUES ('cleared_at', ?), ('start_clean', 'true')`
+        ).run(new Date().toISOString());
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    seedDefaults(db);
+  }
 }
 
 function putCollection(db: Database.Database, collection: string, items: Array<{ id: string } & Record<string, any>>) {

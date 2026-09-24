@@ -92,12 +92,19 @@ export async function POST(req: NextRequest) {
     if (action === 'get_schema') {
       const tables = await getTableStats();
       const info = getEngineLabel();
+      const engineName =
+        info.engine === 'postgres'
+          ? 'Supabase PostgreSQL (DATABASE_URL pooler)'
+          : info.engine === 'supabase'
+            ? 'Supabase PostgreSQL'
+            : 'SQLite SQL Server Compatible Engine';
       return NextResponse.json({
         tables,
         status: 'connected',
         connectionKeySet: Boolean(connectionKey && String(connectionKey).trim()),
-        engine: info.engine === 'supabase' ? 'Supabase PostgreSQL' : 'SQLite SQL Server Compatible Engine',
+        engine: engineName,
         backend: info,
+        startClean: (info as any).startClean || false,
       });
     }
 
@@ -106,20 +113,26 @@ export async function POST(req: NextRequest) {
       const tables = await getTableStats();
       const totalRows = tables.reduce((sum, t) => sum + t.rowCount, 0);
       const supabase = isSupabaseConfigured();
+      const isPg = info.engine === 'postgres';
       return NextResponse.json({
         success: true,
         status: 'connected',
-        message: supabase
-          ? `Connected to Supabase PostgreSQL at ${info.url || 'configured project'}`
-          : connectionKey
-            ? 'Local SQL engine online. Add NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY for cloud SQL.'
-            : 'SQLite SQL backend online (set Supabase env vars for cloud).',
-        serverType: supabase ? 'Supabase PostgreSQL' : 'SQLite Relational Engine',
+        message: isPg
+          ? `Connected to Supabase Postgres pooler (${info.url || 'DATABASE_URL'})`
+          : supabase
+            ? `Connected to Supabase API at ${info.url || 'configured project'}`
+            : 'SQLite SQL backend online. Set DATABASE_URL to your Supabase connection string for cloud SQL.',
+        serverType: isPg
+          ? 'Supabase PostgreSQL (DATABASE_URL)'
+          : supabase
+            ? 'Supabase PostgreSQL'
+            : 'SQLite Relational Engine',
         latencyMs: Math.floor(Math.random() * 8) + 2,
         tables: tables.length,
         totalRows,
         backend: info,
-        supabaseConfigured: supabase,
+        supabaseConfigured: supabase || isPg,
+        startClean: (info as any).startClean || false,
       });
     }
 
@@ -182,15 +195,22 @@ export async function GET(req: NextRequest) {
 
   const tables = await getTableStats();
   const info = getEngineLabel();
+  const version =
+    info.engine === 'postgres'
+      ? 'Supabase PostgreSQL pooler (pg)'
+      : info.engine === 'supabase'
+        ? 'Supabase PostgreSQL v3.0'
+        : 'SQLite Compatible v3.0';
   return NextResponse.json({
     status: 'connected',
     tablesCount: tables.length,
     totalRows: tables.reduce((s, t) => s + t.rowCount, 0),
     database: 'frc_scouting_db',
     engine: info.engine,
-    version: info.engine === 'supabase' ? 'Supabase PostgreSQL v3.0' : 'SQLite Compatible v3.0',
+    version,
     backend: info,
-    supabaseConfigured: isSupabaseConfigured(),
+    supabaseConfigured: isSupabaseConfigured() || info.engine === 'postgres',
+    startClean: (info as any).startClean || false,
     tables,
   });
 }

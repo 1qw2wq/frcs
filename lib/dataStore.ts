@@ -1,9 +1,13 @@
 /**
- * Unified data store: prefers Supabase (PostgreSQL) when configured,
- * otherwise falls back to local SQLite (lib/db.ts).
+ * Unified data store priority:
+ * 1) DATABASE_URL / Supabase Postgres pooler (lib/pg.ts)
+ * 2) Supabase JS client (URL + service role)
+ * 3) Local SQLite fallback
  */
-import { getSupabase, isSupabaseConfigured, getBackendInfo } from '@/lib/supabase';
+import { getSupabase, isSupabaseConfigured, getBackendInfo as getSupabaseBackendInfo } from '@/lib/supabase';
+import * as pg from '@/lib/pg';
 import * as sqlite from '@/lib/db';
+import { shouldStartClean as pgStartClean } from '@/lib/pg';
 import {
   INITIAL_TEAMS,
   INITIAL_MATCHES,
@@ -478,6 +482,11 @@ async function ensureSupabaseSeeded() {
 }
 
 export async function getFullDataset() {
+  if (pg.isPostgresConfigured()) {
+    const data = await pg.pgGetFullDataset();
+    return { ...data, backend: getEngineLabel() };
+  }
+
   if (isSupabaseConfigured()) {
     await ensureSupabaseSeeded();
     const [teams, matches, scoutingEntries, pitData, picklist, teamCentral] = await Promise.all([
@@ -496,12 +505,23 @@ export async function getFullDataset() {
       picklist,
       ...teamCentral,
       lastUpdated: new Date().toISOString(),
-      backend: getBackendInfo(),
+      backend: getEngineLabel(),
     };
   }
 
+  // SQLite: honor FRC_START_CLEAN
+  if (pgStartClean()) {
+    try {
+      const meta = sqlite.getFullDataset();
+      // If already has data and not cleared, leave it; seedIfEmpty in sqlite handles cleared_at
+      void meta;
+    } catch {
+      /* ignore */
+    }
+  }
+
   const data = sqlite.getFullDataset();
-  return { ...data, backend: getBackendInfo() };
+  return { ...data, backend: getEngineLabel() };
 }
 
 export async function upsertScoutingEntry(entry: MatchScoutingEntry): Promise<MatchScoutingEntry> {
@@ -510,6 +530,10 @@ export async function upsertScoutingEntry(entry: MatchScoutingEntry): Promise<Ma
     id: entry.id || `scout-${Date.now()}`,
     timestamp: entry.timestamp || new Date().toISOString().replace('T', ' ').slice(0, 19),
   };
+
+  if (pg.isPostgresConfigured()) {
+    return pg.upsertScoutingEntry(full);
+  }
 
   if (isSupabaseConfigured()) {
     const sb = getSupabase()!;
@@ -545,6 +569,9 @@ export async function upsertPitData(pit: PitScoutingData): Promise<PitScoutingDa
     ...pit,
     lastChecked: pit.lastChecked || new Date().toISOString().replace('T', ' ').slice(0, 16),
   };
+  if (pg.isPostgresConfigured()) {
+    return pg.upsertPitData(full);
+  }
   if (isSupabaseConfigured()) {
     const sb = getSupabase()!;
     const { error } = await sb.from('pit_scouting').upsert(pitToRow(full));
@@ -555,6 +582,9 @@ export async function upsertPitData(pit: PitScoutingData): Promise<PitScoutingDa
 }
 
 export async function replacePicklist(list: PicklistTeam[]): Promise<PicklistTeam[]> {
+  if (pg.isPostgresConfigured()) {
+    return pg.replacePicklist(list);
+  }
   if (isSupabaseConfigured()) {
     const sb = getSupabase()!;
     await sb.from('picklist').delete().neq('team_number', -1);
@@ -584,6 +614,11 @@ export async function clearAllData(): Promise<{ cleared: string[]; timestamp: st
     'hour_appeals',
     'certifications',
   ];
+
+  if (pg.isPostgresConfigured()) {
+    const result = await pg.clearAllData();
+    return { ...result, backend: 'postgres' };
+  }
 
   if (isSupabaseConfigured()) {
     const sb = getSupabase()!;
@@ -615,6 +650,11 @@ export async function clearAllData(): Promise<{ cleared: string[]; timestamp: st
 }
 
 export async function resetToDefaults(): Promise<{ message: string; timestamp: string; backend: string }> {
+  if (pg.isPostgresConfigured()) {
+    const result = await pg.resetToDefaults();
+    return { ...result, backend: 'postgres' };
+  }
+
   if (isSupabaseConfigured()) {
     await clearAllData();
     const sb = getSupabase()!;
@@ -640,7 +680,111 @@ export async function resetToDefaults(): Promise<{ message: string; timestamp: s
   return { ...result, backend: 'sqlite' };
 }
 
+export async function upsertTeam(
+  team: Partial<FrcTeam> & { number: number; name: string }
+): Promise<FrcTeam> {
+  if (pg.isPostgresConfigured()) {
+    return pg.upsertTeam(team);
+  }
+  if (isSupabaseConfigured()) {
+    const sb = getSupabase()!;
+    const full: FrcTeam = {
+      number: team.number,
+      name: team.name,
+      organization: team.organization || '',
+      location: team.location || '',
+      rookieYear: team.rookieYear || new Date().getFullYear(),
+      epa: team.epa ?? 0,
+      autoEpa: team.autoEpa ?? 0,
+      teleopEpa: team.teleopEpa ?? 0,
+      endgameEpa: team.endgameEpa ?? 0,
+      rank: team.rank ?? 999,
+      record: team.record || { wins: 0, losses: 0, ties: 0 },
+      imageUrl: team.imageUrl || '',
+      cadUrl: team.cadUrl,
+      drivetrain: (team.drivetrain as FrcTeam['drivetrain']) || 'Custom Swerve',
+      status: (team.status as FrcTeam['status']) || 'Active',
+    };
+    const { error } = await sb.from('teams').upsert(teamToRow(full));
+    if (error) throw error;
+    await sb.from('meta').delete().eq('key', 'cleared_at');
+    return full;
+  }
+  // SQLite path
+  const db = sqlite.getDb();
+  const full: FrcTeam = {
+    number: team.number,
+    name: team.name,
+    organization: team.organization || '',
+    location: team.location || '',
+    rookieYear: team.rookieYear || new Date().getFullYear(),
+    epa: team.epa ?? 0,
+    autoEpa: team.autoEpa ?? 0,
+    teleopEpa: team.teleopEpa ?? 0,
+    endgameEpa: team.endgameEpa ?? 0,
+    rank: team.rank ?? 999,
+    record: team.record || { wins: 0, losses: 0, ties: 0 },
+    imageUrl: team.imageUrl || '',
+    cadUrl: team.cadUrl,
+    drivetrain: (team.drivetrain as FrcTeam['drivetrain']) || 'Custom Swerve',
+    status: (team.status as FrcTeam['status']) || 'Active',
+  };
+  db.prepare(`
+    INSERT OR REPLACE INTO teams (
+      number, name, organization, location, rookie_year, epa, auto_epa, teleop_epa, endgame_epa,
+      rank, wins, losses, ties, image_url, cad_url, drivetrain, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    full.number,
+    full.name,
+    full.organization,
+    full.location,
+    full.rookieYear,
+    full.epa,
+    full.autoEpa,
+    full.teleopEpa,
+    full.endgameEpa,
+    full.rank,
+    full.record.wins,
+    full.record.losses,
+    full.record.ties,
+    full.imageUrl,
+    full.cadUrl || null,
+    full.drivetrain,
+    full.status
+  );
+  try {
+    db.prepare(`DELETE FROM meta WHERE key = 'cleared_at'`).run();
+  } catch {
+    /* ignore */
+  }
+  return full;
+}
+
+export async function deleteTeam(teamNumber: number): Promise<void> {
+  if (pg.isPostgresConfigured()) {
+    await pg.deleteTeam(teamNumber);
+    return;
+  }
+  if (isSupabaseConfigured()) {
+    const sb = getSupabase()!;
+    await sb.from('match_scouting').delete().eq('team_number', teamNumber);
+    await sb.from('pit_scouting').delete().eq('team_number', teamNumber);
+    await sb.from('picklist').delete().eq('team_number', teamNumber);
+    await sb.from('teams').delete().eq('number', teamNumber);
+    return;
+  }
+  const db = sqlite.getDb();
+  db.prepare(`DELETE FROM match_scouting WHERE team_number = ?`).run(teamNumber);
+  db.prepare(`DELETE FROM pit_scouting WHERE team_number = ?`).run(teamNumber);
+  db.prepare(`DELETE FROM picklist WHERE team_number = ?`).run(teamNumber);
+  db.prepare(`DELETE FROM teams WHERE number = ?`).run(teamNumber);
+}
+
 export async function getTableStats() {
+  if (pg.isPostgresConfigured()) {
+    return pg.getTableStats();
+  }
   if (isSupabaseConfigured()) {
     const sb = getSupabase()!;
     const countOf = async (table: string) => {
@@ -663,6 +807,9 @@ export async function getTableStats() {
 }
 
 export async function executeSql(sql: string) {
+  if (pg.isPostgresConfigured()) {
+    return pg.executeSql(sql);
+  }
   // Live SQL console: when on Supabase, support a limited set of SELECTs via PostgREST-friendly patterns;
   // complex SQL still works on SQLite fallback.
   if (isSupabaseConfigured()) {
@@ -835,10 +982,33 @@ function buildDump(dataset: {
 }
 
 export function getEngineLabel() {
-  return getBackendInfo();
+  if (pg.isPostgresConfigured()) {
+    return {
+      engine: 'postgres' as const,
+      configured: true,
+      url: pg.getDatabaseUrl().replace(/:[^:@/]+@/, ':****@'),
+      message: 'Connected to Supabase PostgreSQL via DATABASE_URL (pooler)',
+      startClean: pg.shouldStartClean(),
+    };
+  }
+  if (isSupabaseConfigured()) {
+    return { ...getSupabaseBackendInfo(), startClean: pg.shouldStartClean() };
+  }
+  return {
+    engine: 'sqlite' as const,
+    configured: true,
+    message: 'Local SQLite fallback (set DATABASE_URL for Supabase Postgres)',
+    startClean: pg.shouldStartClean(),
+  };
 }
 
 export async function getAllScoutingEntries(): Promise<MatchScoutingEntry[]> {
+  if (pg.isPostgresConfigured()) return pg.getAllScoutingEntries();
   if (isSupabaseConfigured()) return supabaseGetAllScouting();
   return sqlite.getAllScoutingEntries();
+}
+
+/** Re-export for callers that still import getBackendInfo name */
+export function getBackendInfo() {
+  return getEngineLabel();
 }

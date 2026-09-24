@@ -8,9 +8,11 @@ import {
   resetToDefaults,
   getAllScoutingEntries,
   getEngineLabel,
+  upsertTeam,
+  deleteTeam,
 } from '@/lib/dataStore';
-import { isAdminAccessKey, isMemberAccessKey } from '@/lib/accessKeys';
-import type { MatchScoutingEntry, PitScoutingData, PicklistTeam } from '@/types/frc';
+import { isAdminAccessKey, isMemberAccessKey, resolveRoleFromKey } from '@/lib/accessKeys';
+import type { MatchScoutingEntry, PitScoutingData, PicklistTeam, FrcTeam } from '@/types/frc';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -49,8 +51,52 @@ export async function POST(req: NextRequest) {
       if (!Array.isArray(payload)) {
         return NextResponse.json({ error: 'Picklist payload must be an array' }, { status: 400 });
       }
+      // Members can read picklist but only admin may overwrite strategy list
+      if (accessKey && isMemberAccessKey(accessKey) && !isAdminAccessKey(accessKey)) {
+        return NextResponse.json(
+          { error: 'Administrator key required to edit picklist.' },
+          { status: 403 }
+        );
+      }
       const picklist = await replacePicklist(payload as PicklistTeam[]);
       return NextResponse.json({ success: true, picklist, backend: getEngineLabel() });
+    }
+
+    // Members + admins can add teams for scouting
+    if (type === 'addTeam' || type === 'upsertTeam' || type === 'add_team') {
+      const role = resolveRoleFromKey(accessKey || null);
+      if (accessKey && !role) {
+        return NextResponse.json({ error: 'Invalid access key.' }, { status: 403 });
+      }
+      const number = Number(payload?.number ?? payload?.teamNumber);
+      const name = String(payload?.name || '').trim();
+      if (!number || !name) {
+        return NextResponse.json(
+          { error: 'Team number and name are required.' },
+          { status: 400 }
+        );
+      }
+      const team = await upsertTeam({
+        ...(payload as Partial<FrcTeam>),
+        number,
+        name,
+      });
+      const dataset = await getFullDataset();
+      return NextResponse.json({ success: true, team, dataset, backend: getEngineLabel() });
+    }
+
+    if (type === 'deleteTeam' || type === 'delete_team') {
+      const role = resolveRoleFromKey(accessKey || null);
+      if (accessKey && !role) {
+        return NextResponse.json({ error: 'Invalid access key.' }, { status: 403 });
+      }
+      const number = Number(payload?.number ?? payload?.teamNumber ?? body.teamNumber);
+      if (!number) {
+        return NextResponse.json({ error: 'Team number required.' }, { status: 400 });
+      }
+      await deleteTeam(number);
+      const dataset = await getFullDataset();
+      return NextResponse.json({ success: true, deleted: number, dataset, backend: getEngineLabel() });
     }
 
     if (type === 'clear_all' || type === 'clearAll') {
