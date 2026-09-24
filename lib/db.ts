@@ -480,20 +480,26 @@ function seedDefaults(db: Database.Database) {
     }
 
     const now = new Date().toISOString();
-    insertKey.run({
-      role: 'administrator',
-      key_value: 'FRC-ADMIN-2025',
-      permissions: 'ALL: READ, WRITE, SQL_EXEC, ADMIN_KEY_MGMT, CLEAR_DATA',
-      status: 'Active',
-      updated_at: now,
-    });
-    insertKey.run({
-      role: 'member',
-      key_value: 'FRC-MEMBER-TEAM',
-      permissions: 'SCOUT_SUBMIT, VIEW_STATS, PIT_VIEW, PICKLIST_READ',
-      status: 'Active',
-      updated_at: now,
-    });
+    const adminKey = (process.env.FRC_ADMIN_KEY || process.env.NEXT_PUBLIC_FRC_ADMIN_KEY || '').trim();
+    const memberKey = (process.env.FRC_MEMBER_KEY || process.env.NEXT_PUBLIC_FRC_MEMBER_KEY || '').trim();
+    if (adminKey) {
+      insertKey.run({
+        role: 'administrator',
+        key_value: adminKey,
+        permissions: 'ALL: READ, WRITE, SQL_EXEC, ADMIN_KEY_MGMT, CLEAR_DATA',
+        status: 'Active',
+        updated_at: now,
+      });
+    }
+    if (memberKey) {
+      insertKey.run({
+        role: 'member',
+        key_value: memberKey,
+        permissions: 'SCOUT_SUBMIT, VIEW_STATS, PIT_VIEW, PICKLIST_READ',
+        status: 'Active',
+        updated_at: now,
+      });
+    }
 
     // Team Central seed (members, events, tasks, etc.)
     putCollection(db, 'certifications', INITIAL_CERTIFICATIONS);

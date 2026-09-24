@@ -548,13 +548,24 @@ async function seedDefaults() {
   await putCollection('hour_appeals', INITIAL_HOUR_APPEALS);
 
   const now = new Date().toISOString();
-  await exec(
-    `INSERT INTO access_keys (role, key_value, permissions, status, updated_at) VALUES
-      ('administrator', 'FRC-ADMIN-2025', 'ALL', 'Active', $1),
-      ('member', 'FRC-MEMBER-TEAM', 'SCOUT', 'Active', $1)
-     ON CONFLICT (role) DO NOTHING`,
-    [now]
-  );
+  const adminKey = (process.env.FRC_ADMIN_KEY || process.env.NEXT_PUBLIC_FRC_ADMIN_KEY || '').trim();
+  const memberKey = (process.env.FRC_MEMBER_KEY || process.env.NEXT_PUBLIC_FRC_MEMBER_KEY || '').trim();
+  if (adminKey) {
+    await exec(
+      `INSERT INTO access_keys (role, key_value, permissions, status, updated_at) VALUES
+        ('administrator', $1, 'ALL', 'Active', $2)
+       ON CONFLICT (role) DO UPDATE SET key_value = EXCLUDED.key_value, updated_at = EXCLUDED.updated_at`,
+      [adminKey, now]
+    );
+  }
+  if (memberKey) {
+    await exec(
+      `INSERT INTO access_keys (role, key_value, permissions, status, updated_at) VALUES
+        ('member', $1, 'SCOUT', 'Active', $2)
+       ON CONFLICT (role) DO UPDATE SET key_value = EXCLUDED.key_value, updated_at = EXCLUDED.updated_at`,
+      [memberKey, now]
+    );
+  }
   await exec(`DELETE FROM meta WHERE key = 'cleared_at'`);
   await exec(
     `INSERT INTO meta (key, value) VALUES ('seeded_at', $1), ('db_version', 'pg-3.0')

@@ -30,19 +30,24 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     success: true,
-    usingDefaults: config.usingDefaults,
+    usingDefaults: false,
+    keysConfigured: config.keysConfigured,
     adminFromEnv: config.adminFromEnv,
     memberFromEnv: config.memberFromEnv,
+    adminConfigured: config.adminConfigured,
+    memberConfigured: config.memberConfigured,
     source: config.source,
-    // Quick-select values only when safe to show in the browser
+    // Quick-select values ONLY when NEXT_PUBLIC_* is set — never invent demo secrets
     publicAdminKey: config.publicAdminKey ?? null,
     publicMemberKey: config.publicMemberKey ?? null,
-    // Length hints so admins know env is loaded without revealing the secret
     adminKeySet: Boolean(getAdminKey()),
     memberKeySet: Boolean(getMemberKey()),
     adminKeyLength: getAdminKey().length,
     memberKeyLength: getMemberKey().length,
-    // Auth modes available in the UI
+    missingKeys: [
+      ...(!getAdminKey() ? ['FRC_ADMIN_KEY'] : []),
+      ...(!getMemberKey() ? ['FRC_MEMBER_KEY'] : []),
+    ],
     modes: {
       adminToken: true,
       memberRegister: true,
@@ -57,16 +62,36 @@ export async function GET(req: NextRequest) {
  *  - { action: 'register_member', name, password, memberToken }
  *  - { action: 'login_member', name, password }
  *
- * Member register requires the shared member access token (same token model as admin).
- * Member login uses only the name + password set at registration; response still
- * returns accessToken (= FRC_MEMBER_KEY) for API calls.
+ * Keys come only from env (FRC_ADMIN_KEY / FRC_MEMBER_KEY). No built-in defaults.
  */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || body.type || 'validate_key').trim();
 
+    if (!getAdminKey() && !getMemberKey()) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            'Access keys are not configured. Set FRC_ADMIN_KEY and FRC_MEMBER_KEY in the environment and restart the server.',
+          missingKeys: ['FRC_ADMIN_KEY', 'FRC_MEMBER_KEY'],
+        },
+        { status: 503 }
+      );
+    }
+
     if (action === 'register_member' || action === 'member_register') {
+      if (!getMemberKey()) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: 'FRC_MEMBER_KEY is not set. Add it to the environment and restart.',
+            missingKeys: ['FRC_MEMBER_KEY'],
+          },
+          { status: 503 }
+        );
+      }
       const result = await registerMemberAccount({
         name: body.name || body.displayName,
         password: body.password,
@@ -85,6 +110,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'login_member' || action === 'member_login') {
+      if (!getMemberKey()) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: 'FRC_MEMBER_KEY is not set. Add it to the environment and restart.',
+            missingKeys: ['FRC_MEMBER_KEY'],
+          },
+          { status: 503 }
+        );
+      }
       const result = await loginMemberAccount({
         name: body.name || body.displayName,
         password: body.password,
@@ -101,7 +136,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Default: validate shared access key (admin or legacy member-token login)
+    // Default: validate shared access key from env only
     const key = String(body.key || body.accessKey || body.token || '').trim();
     if (!key) {
       return NextResponse.json(
@@ -115,7 +150,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Invalid Access Key. Check FRC_ADMIN_KEY / FRC_MEMBER_KEY in your environment.',
+          message:
+            'Invalid access key. It must match FRC_ADMIN_KEY or FRC_MEMBER_KEY from your environment.',
         },
         { status: 401 }
       );

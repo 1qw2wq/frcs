@@ -171,10 +171,12 @@ DO $$ BEGIN
   CREATE POLICY "public_all_meta" ON meta FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-INSERT INTO access_keys (role, key_value, permissions, status, updated_at) VALUES
-  ('administrator', 'FRC-ADMIN-2025', 'ALL: READ, WRITE, SQL_EXEC, ADMIN_KEY_MGMT, CLEAR_DATA', 'Active', NOW()::text),
-  ('member', 'FRC-MEMBER-TEAM', 'SCOUT_SUBMIT, VIEW_STATS, PIT_VIEW, PICKLIST_READ', 'Active', NOW()::text)
-ON CONFLICT (role) DO NOTHING;
+-- Seed access_keys from your real env values (do not use demo defaults).
+-- Example (replace with your FRC_ADMIN_KEY / FRC_MEMBER_KEY):
+-- INSERT INTO access_keys (role, key_value, permissions, status, updated_at) VALUES
+--   ('administrator', 'your-admin-secret', 'ALL: READ, WRITE, SQL_EXEC, ADMIN_KEY_MGMT, CLEAR_DATA', 'Active', NOW()::text),
+--   ('member', 'your-member-secret', 'SCOUT_SUBMIT, VIEW_STATS, PIT_VIEW, PICKLIST_READ', 'Active', NOW()::text)
+-- ON CONFLICT (role) DO UPDATE SET key_value = EXCLUDED.key_value, updated_at = EXCLUDED.updated_at;
 
 -- Member personal accounts (name + password hash; shared member token only at register)
 CREATE TABLE IF NOT EXISTS member_accounts (

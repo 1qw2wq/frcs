@@ -173,15 +173,25 @@ export const KeyAuthModal: React.FC = () => {
           className={`mb-4 flex items-start gap-2 rounded-xl border px-3 py-2.5 text-[11px] font-mono ${
             keysFromEnv
               ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-              : 'border-slate-700 bg-slate-950/60 text-slate-400'
+              : 'border-rose-500/30 bg-rose-950/40 text-rose-200'
           }`}
         >
           <Server className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           <div className="leading-relaxed">
-            Shared access tokens load from env · admin:{' '}
-            <span className="text-emerald-300">{envSource.admin}</span> · member:{' '}
-            <span className="text-emerald-300">{envSource.member}</span>. Members need the member token{' '}
-            <span className="text-cyan-300">only once</span> when registering.
+            {keysFromEnv ? (
+              <>
+                Access tokens from environment · admin:{' '}
+                <span className="text-emerald-300">{envSource.admin}</span> · member:{' '}
+                <span className="text-emerald-300">{envSource.member}</span>. Members need the member
+                token <span className="text-cyan-300">only once</span> at registration.
+              </>
+            ) : (
+              <>
+                No keys in environment. Set <span className="text-amber-200">FRC_ADMIN_KEY</span> and{' '}
+                <span className="text-amber-200">FRC_MEMBER_KEY</span> in <span className="text-cyan-200">.env</span>{' '}
+                / hosting secrets, then restart. There are no built-in demo defaults.
+              </>
+            )}
           </div>
         </div>
 
@@ -340,11 +350,7 @@ export const KeyAuthModal: React.FC = () => {
                   type="password"
                   value={regToken}
                   onChange={(e) => setRegToken(e.target.value)}
-                  placeholder={
-                    showMemberTokenHint && keys.memberKey
-                      ? `Shared team token (e.g. ${keys.memberKey})`
-                      : 'Paste FRC_MEMBER_KEY from your coach/admin'
-                  }
+                  placeholder="Paste FRC_MEMBER_KEY from your coach/admin"
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 transition"
                   autoComplete="off"
                   disabled={isSubmitting}
@@ -357,7 +363,7 @@ export const KeyAuthModal: React.FC = () => {
                   onClick={() => setRegToken(keys.memberKey)}
                   className="mt-1.5 text-[10px] font-mono text-cyan-400 hover:text-cyan-300"
                 >
-                  Use demo member token: {keys.memberKey}
+                  Fill from NEXT_PUBLIC_FRC_MEMBER_KEY
                 </button>
               )}
             </div>

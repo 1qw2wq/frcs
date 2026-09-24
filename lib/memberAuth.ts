@@ -123,6 +123,12 @@ export async function registerMemberAccount(input: {
   const id = `mem-${crypto.randomBytes(8).toString('hex')}`;
   const now = new Date().toISOString();
   const accessToken = getMemberKey();
+  if (!accessToken) {
+    return {
+      success: false,
+      message: 'FRC_MEMBER_KEY is not set in the server environment. Add it and restart.',
+    };
+  }
 
   if (pg.isPostgresConfigured()) {
     const existing = await pg.memberFindByNameKey(key);
@@ -178,6 +184,12 @@ export async function loginMemberAccount(input: {
 
   const key = nameKey(name);
   const accessToken = getMemberKey();
+  if (!accessToken) {
+    return {
+      success: false,
+      message: 'FRC_MEMBER_KEY is not set in the server environment. Add it and restart.',
+    };
+  }
 
   if (pg.isPostgresConfigured()) {
     const row = await pg.memberFindByNameKey(key);

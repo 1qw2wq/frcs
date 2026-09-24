@@ -2,12 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { UserRole, KeyConfig } from '@/types/frc';
-import {
-  DEFAULT_ADMIN_KEY,
-  DEFAULT_MEMBER_KEY,
-  getClientAdminKey,
-  getClientMemberKey,
-} from '@/lib/accessKeys';
+import { getClientAdminKey, getClientMemberKey } from '@/lib/accessKeys';
 
 export type MemberProfile = {
   id: string;
@@ -96,8 +91,8 @@ export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
   const [authReady, setAuthReady] = useState(false);
   const [keysFromEnv, setKeysFromEnv] = useState(false);
   const [envSource, setEnvSource] = useState<{ admin: string; member: string }>({
-    admin: 'default',
-    member: 'default',
+    admin: 'missing',
+    member: 'missing',
   });
 
   // Start with NEXT_PUBLIC_ bake-time values; server /api/auth may refine
@@ -121,30 +116,32 @@ export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
       let adminK = getClientAdminKey();
       let memberK = getClientMemberKey();
       let fromEnv = false;
-      let source = { admin: 'default', member: 'default' };
+      let source = { admin: 'missing', member: 'missing' };
 
       try {
         const res = await fetch('/api/auth', { cache: 'no-store' });
         if (res.ok) {
           const cfg = await res.json();
           if (!cancelled) {
-            fromEnv = Boolean(cfg.adminFromEnv || cfg.memberFromEnv);
+            // Server env is the source of truth — never invent demo keys
+            fromEnv = Boolean(cfg.adminFromEnv || cfg.memberFromEnv || cfg.keysConfigured);
             source = cfg.source || source;
-            if (cfg.publicAdminKey) adminK = cfg.publicAdminKey;
-            else if (cfg.adminFromEnv) adminK = '';
-            if (cfg.publicMemberKey) memberK = cfg.publicMemberKey;
-            else if (cfg.memberFromEnv) memberK = '';
+            // Public keys only if NEXT_PUBLIC_* was set on the server
+            adminK = cfg.publicAdminKey || '';
+            memberK = cfg.publicMemberKey || '';
             setKeysFromEnv(fromEnv);
             setEnvSource(source);
           }
         }
       } catch {
-        /* offline — use bake-time NEXT_PUBLIC_ / defaults */
+        /* offline — only NEXT_PUBLIC_* bake-time values (may be empty) */
       }
 
       if (cancelled) return;
 
       try {
+        // localStorage key overrides only when server env has no keys configured
+        // (admin key-management UI). Never used as hardcoded defaults.
         if (!fromEnv) {
           const savedAdmin = localStorage.getItem('frc_admin_key');
           const savedMember = localStorage.getItem('frc_member_key');
@@ -336,7 +333,8 @@ export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
 
       return {
         success: false,
-        message: 'Invalid Access Key. Set FRC_ADMIN_KEY / FRC_MEMBER_KEY in .env and restart.',
+        message:
+          'Invalid access key, or keys are not configured. Set FRC_ADMIN_KEY and FRC_MEMBER_KEY in the environment and restart — there are no built-in defaults.',
       };
     },
     [keys.adminKey, keys.memberKey, applyAuthSuccess]
@@ -409,8 +407,15 @@ export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
           createdAt: body.account?.createdAt,
           lastLoginAt: body.account?.lastLoginAt ?? null,
         };
-        // Prefer server-issued access token (shared member key); fall back to client public key
-        const token = body.accessToken || keys.memberKey || DEFAULT_MEMBER_KEY;
+        // Prefer server-issued access token (shared member key from env); never invent a default
+        const token = String(body.accessToken || keys.memberKey || '').trim();
+        if (!token) {
+          return {
+            success: false,
+            message:
+              'Member access token missing from server. Set FRC_MEMBER_KEY in the environment and restart.',
+          };
+        }
         return applyAuthSuccess('member', token, profile, body.message || `Welcome back, ${profile.name}.`);
       } catch (e: any) {
         return { success: false, message: e?.message || 'Could not reach auth server.' };
@@ -543,5 +548,4 @@ export function useAuthKey() {
   return context;
 }
 
-// Re-export defaults for any legacy imports
-export { DEFAULT_ADMIN_KEY, DEFAULT_MEMBER_KEY };
+

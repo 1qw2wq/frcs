@@ -1,19 +1,19 @@
 /**
- * Access keys from environment variables.
+ * Access keys — environment variables only. No built-in demo defaults.
  *
- * Server (preferred for secrets):
+ * Required server secrets:
  *   FRC_ADMIN_KEY=...
  *   FRC_MEMBER_KEY=...
  *
- * Client-visible (optional, for UI hints / offline match):
+ * Optional client-visible copies (for UI quick-fill only — still not "defaults"):
  *   NEXT_PUBLIC_FRC_ADMIN_KEY=...
  *   NEXT_PUBLIC_FRC_MEMBER_KEY=...
  *
- * Resolution order: FRC_* → NEXT_PUBLIC_FRC_* → built-in defaults.
+ * Aliases also accepted: ADMIN_KEY / MEMBER_KEY / NEXT_PUBLIC_ADMIN_KEY / NEXT_PUBLIC_MEMBER_KEY
+ *
+ * Resolution order: FRC_* → NEXT_PUBLIC_FRC_* → ADMIN_KEY/MEMBER_KEY aliases.
+ * If nothing is set, keys are empty and login/register will fail until you set env.
  */
-
-export const DEFAULT_ADMIN_KEY = 'FRC-ADMIN-2025';
-export const DEFAULT_MEMBER_KEY = 'FRC-MEMBER-TEAM';
 
 export type AccessRole = 'admin' | 'member';
 
@@ -25,35 +25,50 @@ function pick(...values: Array<string | undefined | null>): string | undefined {
   return undefined;
 }
 
-/** Server-side admin key (use in API routes). */
+/** True when a non-empty admin key is present in the environment. */
+export function isAdminKeyConfigured(): boolean {
+  return Boolean(getAdminKey());
+}
+
+/** True when a non-empty member key is present in the environment. */
+export function isMemberKeyConfigured(): boolean {
+  return Boolean(getMemberKey());
+}
+
+/** Server-side admin key (API routes). Empty string if not set in env. */
 export function getAdminKey(): string {
   return (
     pick(
       process.env.FRC_ADMIN_KEY,
       process.env.NEXT_PUBLIC_FRC_ADMIN_KEY,
-      process.env.ADMIN_KEY
-    ) || DEFAULT_ADMIN_KEY
+      process.env.ADMIN_KEY,
+      process.env.NEXT_PUBLIC_ADMIN_KEY
+    ) || ''
   );
 }
 
-/** Server-side member key (use in API routes). */
+/** Server-side member key (API routes). Empty string if not set in env. */
 export function getMemberKey(): string {
   return (
     pick(
       process.env.FRC_MEMBER_KEY,
       process.env.NEXT_PUBLIC_FRC_MEMBER_KEY,
-      process.env.MEMBER_KEY
-    ) || DEFAULT_MEMBER_KEY
+      process.env.MEMBER_KEY,
+      process.env.NEXT_PUBLIC_MEMBER_KEY
+    ) || ''
   );
 }
 
-/** Client-safe defaults baked at build time via NEXT_PUBLIC_*. */
+/**
+ * Client bake-time values from NEXT_PUBLIC_* only.
+ * Never falls back to a hardcoded demo key.
+ */
 export function getClientAdminKey(): string {
-  return pick(process.env.NEXT_PUBLIC_FRC_ADMIN_KEY, process.env.NEXT_PUBLIC_ADMIN_KEY) || DEFAULT_ADMIN_KEY;
+  return pick(process.env.NEXT_PUBLIC_FRC_ADMIN_KEY, process.env.NEXT_PUBLIC_ADMIN_KEY) || '';
 }
 
 export function getClientMemberKey(): string {
-  return pick(process.env.NEXT_PUBLIC_FRC_MEMBER_KEY, process.env.NEXT_PUBLIC_MEMBER_KEY) || DEFAULT_MEMBER_KEY;
+  return pick(process.env.NEXT_PUBLIC_FRC_MEMBER_KEY, process.env.NEXT_PUBLIC_MEMBER_KEY) || '';
 }
 
 export function resolveRoleFromKey(inputKey: string | null | undefined): AccessRole | null {
@@ -61,8 +76,9 @@ export function resolveRoleFromKey(inputKey: string | null | undefined): AccessR
   const trimmed = String(inputKey).trim();
   const admin = getAdminKey();
   const member = getMemberKey();
-  if (trimmed === admin) return 'admin';
-  if (trimmed === member) return 'member';
+  // Empty env keys must never match (including accidental empty-string equality)
+  if (admin && trimmed === admin) return 'admin';
+  if (member && trimmed === member) return 'member';
   return null;
 }
 
@@ -75,40 +91,59 @@ export function isMemberAccessKey(key: string | null | undefined): boolean {
 }
 
 export function getAccessKeyConfig() {
-  const adminFromEnv = Boolean(
-    pick(process.env.FRC_ADMIN_KEY, process.env.NEXT_PUBLIC_FRC_ADMIN_KEY, process.env.ADMIN_KEY)
+  const adminRaw = pick(
+    process.env.FRC_ADMIN_KEY,
+    process.env.NEXT_PUBLIC_FRC_ADMIN_KEY,
+    process.env.ADMIN_KEY,
+    process.env.NEXT_PUBLIC_ADMIN_KEY
   );
-  const memberFromEnv = Boolean(
-    pick(process.env.FRC_MEMBER_KEY, process.env.NEXT_PUBLIC_FRC_MEMBER_KEY, process.env.MEMBER_KEY)
+  const memberRaw = pick(
+    process.env.FRC_MEMBER_KEY,
+    process.env.NEXT_PUBLIC_FRC_MEMBER_KEY,
+    process.env.MEMBER_KEY,
+    process.env.NEXT_PUBLIC_MEMBER_KEY
   );
+  const adminFromEnv = Boolean(adminRaw);
+  const memberFromEnv = Boolean(memberRaw);
+
+  const adminSource = process.env.FRC_ADMIN_KEY
+    ? 'FRC_ADMIN_KEY'
+    : process.env.NEXT_PUBLIC_FRC_ADMIN_KEY
+      ? 'NEXT_PUBLIC_FRC_ADMIN_KEY'
+      : process.env.ADMIN_KEY
+        ? 'ADMIN_KEY'
+        : process.env.NEXT_PUBLIC_ADMIN_KEY
+          ? 'NEXT_PUBLIC_ADMIN_KEY'
+          : 'missing';
+
+  const memberSource = process.env.FRC_MEMBER_KEY
+    ? 'FRC_MEMBER_KEY'
+    : process.env.NEXT_PUBLIC_FRC_MEMBER_KEY
+      ? 'NEXT_PUBLIC_FRC_MEMBER_KEY'
+      : process.env.MEMBER_KEY
+        ? 'MEMBER_KEY'
+        : process.env.NEXT_PUBLIC_MEMBER_KEY
+          ? 'NEXT_PUBLIC_MEMBER_KEY'
+          : 'missing';
+
   return {
     adminFromEnv,
     memberFromEnv,
-    usingDefaults: !adminFromEnv && !memberFromEnv,
-    // Only expose actual key values to the client when NEXT_PUBLIC_ is set
-    // (or when using built-in defaults for local demo).
-    publicAdminKey: pick(process.env.NEXT_PUBLIC_FRC_ADMIN_KEY, process.env.NEXT_PUBLIC_ADMIN_KEY) ||
-      (!adminFromEnv ? DEFAULT_ADMIN_KEY : undefined),
-    publicMemberKey: pick(process.env.NEXT_PUBLIC_FRC_MEMBER_KEY, process.env.NEXT_PUBLIC_MEMBER_KEY) ||
-      (!memberFromEnv ? DEFAULT_MEMBER_KEY : undefined),
-    // Hint strings for login UI when keys are server-only secrets
-    adminConfigured: true,
-    memberConfigured: true,
+    /** True when either required key is missing from env */
+    usingDefaults: false,
+    keysConfigured: adminFromEnv && memberFromEnv,
+    adminConfigured: adminFromEnv,
+    memberConfigured: memberFromEnv,
+    // Only expose key values when NEXT_PUBLIC_* is set (never invent demo secrets)
+    publicAdminKey: pick(process.env.NEXT_PUBLIC_FRC_ADMIN_KEY, process.env.NEXT_PUBLIC_ADMIN_KEY) || null,
+    publicMemberKey: pick(process.env.NEXT_PUBLIC_FRC_MEMBER_KEY, process.env.NEXT_PUBLIC_MEMBER_KEY) || null,
+    adminKeySet: adminFromEnv,
+    memberKeySet: memberFromEnv,
+    adminKeyLength: getAdminKey().length,
+    memberKeyLength: getMemberKey().length,
     source: {
-      admin: adminFromEnv
-        ? process.env.FRC_ADMIN_KEY
-          ? 'FRC_ADMIN_KEY'
-          : process.env.NEXT_PUBLIC_FRC_ADMIN_KEY
-            ? 'NEXT_PUBLIC_FRC_ADMIN_KEY'
-            : 'ADMIN_KEY'
-        : 'default',
-      member: memberFromEnv
-        ? process.env.FRC_MEMBER_KEY
-          ? 'FRC_MEMBER_KEY'
-          : process.env.NEXT_PUBLIC_FRC_MEMBER_KEY
-            ? 'NEXT_PUBLIC_FRC_MEMBER_KEY'
-            : 'MEMBER_KEY'
-        : 'default',
+      admin: adminSource,
+      member: memberSource,
     },
   };
 }

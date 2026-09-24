@@ -458,22 +458,31 @@ async function ensureSupabaseSeeded() {
   await sb.from('match_scouting').upsert(INITIAL_SCOUTING_ENTRIES.map(scoutToRow));
   await sb.from('pit_scouting').upsert(INITIAL_PIT_DATA.map(pitToRow));
   await sb.from('picklist').upsert(INITIAL_PICKLIST.map(pickToRow));
-  await sb.from('access_keys').upsert([
-    {
+  const now = new Date().toISOString();
+  const adminKey = (process.env.FRC_ADMIN_KEY || process.env.NEXT_PUBLIC_FRC_ADMIN_KEY || '').trim();
+  const memberKey = (process.env.FRC_MEMBER_KEY || process.env.NEXT_PUBLIC_FRC_MEMBER_KEY || '').trim();
+  const keyRows: Array<Record<string, string>> = [];
+  if (adminKey) {
+    keyRows.push({
       role: 'administrator',
-      key_value: 'FRC-ADMIN-2025',
+      key_value: adminKey,
       permissions: 'ALL: READ, WRITE, SQL_EXEC, ADMIN_KEY_MGMT, CLEAR_DATA',
       status: 'Active',
-      updated_at: new Date().toISOString(),
-    },
-    {
+      updated_at: now,
+    });
+  }
+  if (memberKey) {
+    keyRows.push({
       role: 'member',
-      key_value: 'FRC-MEMBER-TEAM',
+      key_value: memberKey,
       permissions: 'SCOUT_SUBMIT, VIEW_STATS, PIT_VIEW, PICKLIST_READ',
       status: 'Active',
-      updated_at: new Date().toISOString(),
-    },
-  ]);
+      updated_at: now,
+    });
+  }
+  if (keyRows.length) {
+    await sb.from('access_keys').upsert(keyRows);
+  }
   try {
     await supabaseSeedTeamCentral();
   } catch {
