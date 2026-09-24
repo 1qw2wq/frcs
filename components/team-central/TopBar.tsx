@@ -2,118 +2,132 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { Bell, IdCard, Radio } from 'lucide-react';
+import { Bell, IdCard, Radio, LogOut, KeyRound } from 'lucide-react';
 
 interface TopBarProps {
-  portalMode: 'student' | 'admin';
-  setPortalMode: (mode: 'student' | 'admin') => void;
   shopOccupancy: number;
-  onOpenKiosk: () => void;
+  onOpenKiosk?: () => void;
   isCheckedIn: boolean;
   onOpenNfc: () => void;
   studentName?: string;
   roleTitle?: string;
   onOpenRoleSwitcher?: () => void;
+  isAdmin?: boolean;
+  onLogout?: () => void;
+  onManageKeys?: () => void;
+  /** Hide student-only controls on admin console */
+  showFloorControls?: boolean;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
-  portalMode,
-  setPortalMode,
   shopOccupancy,
   onOpenKiosk,
   isCheckedIn,
   onOpenNfc,
   studentName = 'Maya Patel',
-  roleTitle = 'CO-CAPTAIN / SOFTWARE LEAD',
+  roleTitle = 'MEMBER',
   onOpenRoleSwitcher,
+  isAdmin = false,
+  onLogout,
+  onManageKeys,
+  showFloorControls = true,
 }) => {
   return (
-    <header className="h-16 w-full border-b border-slate-800/80 bg-[#0B0F17]/95 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between z-30 sticky top-0">
-      {/* Left: Mode Toggle (Student Portal vs Admin Console) */}
+    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-800/80 bg-[#0B0F17]/90 px-4 shadow-lg shadow-black/10 backdrop-blur-xl sm:px-6">
+      {/* Left: role identity only (no Student/Admin toggle) */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800">
-          <button
-            type="button"
-            onClick={() => setPortalMode('student')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
-              portalMode === 'student'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Student Portal
-          </button>
-          <button
-            type="button"
-            onClick={() => setPortalMode('admin')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
-              portalMode === 'admin'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Admin Console
-          </button>
+        <div
+          className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-mono font-bold ${
+            isAdmin
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+              : 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300'
+          }`}
+        >
+          <IdCard className={`h-3.5 w-3.5 ${isAdmin ? 'text-amber-400' : 'text-cyan-400'}`} />
+          <span>{isAdmin ? 'ADMIN CONSOLE' : 'MEMBER PORTAL'}</span>
         </div>
-
-        {/* Role Badge */}
         <button
           type="button"
           onClick={onOpenRoleSwitcher}
-          title="Click to view/switch user role"
-          className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/70 border border-slate-800 text-xs font-mono text-slate-300 hover:border-slate-700 transition"
+          title="Switch access key"
+          className="hidden items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-1.5 font-mono text-xs text-slate-400 transition hover:border-slate-600 hover:text-white md:flex"
         >
-          <IdCard className="w-3.5 h-3.5 text-blue-400" />
-          <span>ROLE: {roleTitle}</span>
+          <span className="max-w-[220px] truncate">{roleTitle}</span>
         </button>
       </div>
 
-      {/* Right: Kiosk Shop occupancy, Notification Bell, User Avatar */}
-      <div className="flex items-center gap-3">
-        {/* In Shop Now Button / Kiosk launcher */}
-        <div className="flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-full bg-slate-900/90 border border-slate-800 text-xs font-mono">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-          <span className="text-slate-200 font-bold whitespace-nowrap">{shopOccupancy} IN SHOP NOW</span>
+      {/* Right */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        {isAdmin && onOpenKiosk && (
+          <div className="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/90 py-1 pl-3 pr-1.5 font-mono text-xs">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+            <span className="whitespace-nowrap font-bold text-slate-200">{shopOccupancy} IN SHOP</span>
+            <button
+              type="button"
+              onClick={onOpenKiosk}
+              className="rounded-full bg-amber-600 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-amber-500 active:scale-95"
+            >
+              KIOSK
+            </button>
+          </div>
+        )}
+
+        {showFloorControls && !isAdmin && (
           <button
             type="button"
-            onClick={onOpenKiosk}
-            className="px-2 py-0.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold tracking-wider uppercase transition active:scale-95 shadow-sm"
+            onClick={onOpenNfc}
+            title={isCheckedIn ? 'Currently clocked in' : 'Clock in/out'}
+            className={`hidden items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-xs transition sm:flex ${
+              isCheckedIn
+                ? 'border-emerald-800/80 bg-emerald-950/60 text-emerald-300'
+                : 'border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200'
+            }`}
           >
-            KIOSK
+            <Radio className={`h-3 w-3 ${isCheckedIn ? 'animate-pulse text-emerald-400' : 'text-slate-500'}`} />
+            <span>{isCheckedIn ? 'ON FLOOR' : 'OFF FLOOR'}</span>
           </button>
-        </div>
+        )}
 
-        {/* Check in badge trigger (quick NFC scan indicator) */}
         <button
           type="button"
-          onClick={onOpenNfc}
-          title={isCheckedIn ? 'You are currently clocked in' : 'Click to clock in/out with RFID'}
-          className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono border transition ${
-            isCheckedIn
-              ? 'bg-emerald-950/60 border-emerald-800/80 text-emerald-300'
-              : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Radio className={`w-3 h-3 ${isCheckedIn ? 'text-emerald-400 animate-pulse' : 'text-slate-500'}`} />
-          <span>{isCheckedIn ? 'ON FLOOR' : 'OFF FLOOR'}</span>
-        </button>
-
-        {/* Notification Bell */}
-        <button
-          type="button"
-          className="relative p-2 rounded-xl bg-slate-900/70 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 transition"
+          className="relative rounded-xl border border-slate-800 bg-slate-900/70 p-2 text-slate-300 transition hover:border-slate-700 hover:text-white"
           aria-label="Notifications"
         >
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-500 ring-2 ring-[#0B0F17]" />
+          <Bell className="h-4 w-4" />
+          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-[#0B0F17]" />
         </button>
 
-        {/* Profile Card */}
-        <div className="flex items-center gap-2.5 pl-1.5">
-          <div className="relative w-9 h-9 rounded-full overflow-hidden ring-2 ring-blue-500/40 shrink-0 bg-slate-800">
+        {onManageKeys && isAdmin && (
+          <button
+            type="button"
+            onClick={onManageKeys}
+            className="hidden items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 font-mono text-[11px] text-amber-300 transition hover:bg-amber-500/20 sm:inline-flex"
+          >
+            <KeyRound className="h-3 w-3" />
+            Keys
+          </button>
+        )}
+
+        {onLogout && (
+          <button
+            type="button"
+            onClick={onLogout}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1.5 font-mono text-[11px] text-slate-400 transition hover:border-rose-500/40 hover:text-rose-300"
+          >
+            <LogOut className="h-3 w-3" />
+            Logout
+          </button>
+        )}
+
+        <div className="flex items-center gap-2.5 pl-1">
+          <div
+            className={`relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-800 ring-2 ${
+              isAdmin ? 'ring-amber-500/50' : 'ring-cyan-500/40'
+            }`}
+          >
             <Image
               src="/assets/maya_patel.jpg"
               alt={studentName}
@@ -123,9 +137,15 @@ export const TopBar: React.FC<TopBarProps> = ({
               referrerPolicy="no-referrer"
             />
           </div>
-          <div className="hidden sm:block text-left leading-tight">
+          <div className="hidden text-left leading-tight sm:block">
             <p className="text-xs font-bold text-white">{studentName}</p>
-            <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">TEAM #5419</p>
+            <p
+              className={`font-mono text-[10px] uppercase tracking-wider ${
+                isAdmin ? 'text-amber-400' : 'text-cyan-400'
+              }`}
+            >
+              {isAdmin ? 'ADMIN' : 'MEMBER'} · #5419
+            </p>
           </div>
         </div>
       </div>

@@ -72,32 +72,19 @@ export const StudentHome: React.FC<StudentHomeProps> = ({
     <div className="space-y-6 pb-12">
       {/* 1. Top System Status Tags & Welcome Header */}
       <div className="space-y-3">
-        {/* Telemetry Tags */}
-        <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-blue-950/40 border border-blue-800/60 text-blue-300">
-            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-            <span className="font-semibold uppercase tracking-wider">ROBOTICS SYSTEM ONLINE</span>
-          </div>
-          <div className="px-2.5 py-1 rounded-md bg-slate-900/60 border border-slate-800 text-slate-400">
-            FW: 2025.4.1-rc3
-          </div>
-          <div className="px-2.5 py-1 rounded-md bg-slate-900/60 border border-slate-800 text-slate-400">
-            CAN BUS: 0.12% UTIL
-          </div>
-        </div>
-
-        {/* Hero Title & Primary Action Buttons */}
+        {/* Hero */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-1">
           <div>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-md border border-emerald-800/50 bg-emerald-950/30 px-2.5 py-1 font-mono text-[11px] text-emerald-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              {isCheckedIn ? 'ON FLOOR' : 'OFF FLOOR'} · {loggedHours}h logged
+            </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex flex-wrap items-baseline gap-2">
-              <span>Welcome back, Maya!</span>
+              <span>Welcome back, Maya</span>
               <span className="text-blue-400 text-xl sm:text-2xl font-mono">#5419</span>
             </h2>
-            <h3 className="text-lg font-black tracking-wider text-slate-300 uppercase mt-0.5">
-              VORTEX
-            </h3>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Co-Captain & Software Lead • Week 4 Sprint Milestone Target: 100% Autos Nominal
+              Member portal · tasks, hours, and scouting
             </p>
           </div>
 
@@ -127,31 +114,6 @@ export const StudentHome: React.FC<StudentHomeProps> = ({
               <Clock className="w-4 h-4 text-slate-400" />
               <span>Hour Appeal</span>
             </button>
-            <button
-              type="button"
-              onClick={onOpenFirstSync}
-              className="px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 active:scale-95 text-slate-200 font-medium text-xs sm:text-sm flex items-center gap-2 transition cursor-pointer"
-            >
-              <RotateCw className="w-4 h-4 text-slate-400" />
-              <span>FIRST Sync</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Urgent Announcement Bar */}
-        <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-800/40 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-slate-300">
-          <div className="flex items-center gap-2 overflow-hidden">
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold uppercase tracking-wider shrink-0 text-[10px]">
-              <Megaphone className="w-3 h-3 text-amber-400" />
-              <span>URGENT ANNOUNCEMENT</span>
-            </div>
-            <p className="truncate text-slate-300">
-              Intake Subsystem Testing tonight at 6:30 PM • Machine Shop opens 4:00 PM • Bring high-voltage eye protection
-            </p>
-          </div>
-          <div className="flex items-center gap-1 font-mono text-emerald-400 font-semibold shrink-0 text-[11px]">
-            <Clock className="w-3.5 h-3.5" />
-            <span>STARTS IN 02H 14M</span>
           </div>
         </div>
       </div>

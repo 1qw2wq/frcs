@@ -1,7 +1,13 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { UserRole, KeyConfig } from '@/types/frc';
+import {
+  DEFAULT_ADMIN_KEY,
+  DEFAULT_MEMBER_KEY,
+  getClientAdminKey,
+  getClientMemberKey,
+} from '@/lib/accessKeys';
 
 interface AuthKeyContextType {
   role: UserRole;
@@ -13,7 +19,11 @@ interface AuthKeyContextType {
   sqlConnectionKey: string;
   isAuthModalOpen: boolean;
   isKeyManagementOpen: boolean;
-  loginWithKey: (key: string) => { success: boolean; role?: UserRole; message: string };
+  authReady: boolean;
+  /** Keys come from env; true when FRC_* / NEXT_PUBLIC_FRC_* are set */
+  keysFromEnv: boolean;
+  envSource: { admin: string; member: string };
+  loginWithKey: (key: string) => Promise<{ success: boolean; role?: UserRole; message: string }>;
   logout: () => void;
   updateKeys: (newAdmin: string, newMember: string) => { success: boolean; message: string };
   setSqlConnectionKey: (key: string) => void;
@@ -21,97 +31,221 @@ interface AuthKeyContextType {
   closeAuthModal: () => void;
   openKeyManagement: () => void;
   closeKeyManagement: () => void;
-  hasPermission: (action: 'manage_keys' | 'manage_sql' | 'edit_matches' | 'edit_picklists' | 'submit_scouting' | 'view_analytics') => boolean;
+  hasPermission: (
+    action:
+      | 'manage_keys'
+      | 'manage_sql'
+      | 'edit_matches'
+      | 'edit_picklists'
+      | 'submit_scouting'
+      | 'view_analytics'
+      | 'clear_data'
+      | 'view_admin_console'
+      | 'view_member_portal'
+  ) => boolean;
 }
-
-const DEFAULT_ADMIN_KEY = 'FRC-ADMIN-2025';
-const DEFAULT_MEMBER_KEY = 'FRC-MEMBER-TEAM';
 
 const AuthKeyContext = createContext<AuthKeyContextType | undefined>(undefined);
 
 export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
-  const [keys, setKeys] = useState<KeyConfig>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const savedAdminKey = localStorage.getItem('frc_admin_key');
-        const savedMemberKey = localStorage.getItem('frc_member_key');
-        return {
-          adminKey: savedAdminKey || DEFAULT_ADMIN_KEY,
-          memberKey: savedMemberKey || DEFAULT_MEMBER_KEY,
-          lastUpdated: new Date().toISOString(),
-        };
-      } catch {}
-    }
-    return {
-      adminKey: DEFAULT_ADMIN_KEY,
-      memberKey: DEFAULT_MEMBER_KEY,
-      lastUpdated: new Date().toISOString(),
-    };
+  const [authReady, setAuthReady] = useState(false);
+  const [keysFromEnv, setKeysFromEnv] = useState(false);
+  const [envSource, setEnvSource] = useState<{ admin: string; member: string }>({
+    admin: 'default',
+    member: 'default',
   });
 
-  const [role, setRole] = useState<UserRole>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const savedRole = localStorage.getItem('frc_auth_role') as UserRole;
-        if (savedRole === 'admin' || savedRole === 'member') return savedRole;
-      } catch {}
-    }
-    return 'admin';
-  });
+  // Start with NEXT_PUBLIC_ bake-time values; server /api/auth may refine
+  const [keys, setKeys] = useState<KeyConfig>(() => ({
+    adminKey: getClientAdminKey(),
+    memberKey: getClientMemberKey(),
+    lastUpdated: new Date().toISOString(),
+  }));
 
-  const [activeKey, setActiveKey] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const savedActiveKey = localStorage.getItem('frc_auth_key');
-        if (savedActiveKey) return savedActiveKey;
-      } catch {}
-    }
-    return DEFAULT_ADMIN_KEY;
-  });
-
-  const [sqlConnectionKey, setSqlConnectionKeyInternal] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const savedSqlKey = localStorage.getItem('frc_sql_connection_key');
-        if (savedSqlKey) return savedSqlKey;
-      } catch {}
-    }
-    return 'Server=tcp:frc-db.database.windows.net,1433;Database=frc_tournament;User Id=frc_admin;';
-  });
-
+  const [role, setRole] = useState<UserRole>('none');
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [sqlConnectionKey, setSqlConnectionKeyInternal] = useState<string>('');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isKeyManagementOpen, setIsKeyManagementOpen] = useState(false);
 
-  const loginWithKey = (inputKey: string): { success: boolean; role?: UserRole; message: string } => {
-    const trimmed = inputKey.trim();
-    if (!trimmed) {
-      return { success: false, message: 'Please enter a valid access key.' };
-    }
+  useEffect(() => {
+    let cancelled = false;
 
-    if (trimmed === keys.adminKey) {
-      setRole('admin');
-      setActiveKey(trimmed);
+    (async () => {
+      let adminK = getClientAdminKey();
+      let memberK = getClientMemberKey();
+      let fromEnv = false;
+      let source = { admin: 'default', member: 'default' };
+
       try {
-        localStorage.setItem('frc_auth_role', 'admin');
-        localStorage.setItem('frc_auth_key', trimmed);
-      } catch {}
-      setIsAuthModalOpen(false);
-      return { success: true, role: 'admin' as UserRole, message: 'Administrator Access Granted. Full permissions unlocked.' };
-    }
+        const res = await fetch('/api/auth', { cache: 'no-store' });
+        if (res.ok) {
+          const cfg = await res.json();
+          if (!cancelled) {
+            fromEnv = Boolean(cfg.adminFromEnv || cfg.memberFromEnv);
+            source = cfg.source || source;
+            // Prefer public keys when server exposes them (NEXT_PUBLIC or defaults).
+            // If only server-side FRC_* secrets are set, clear client copies so we
+            // don't accidentally quick-login with the built-in defaults.
+            if (cfg.publicAdminKey) adminK = cfg.publicAdminKey;
+            else if (cfg.adminFromEnv) adminK = '';
+            if (cfg.publicMemberKey) memberK = cfg.publicMemberKey;
+            else if (cfg.memberFromEnv) memberK = '';
+            setKeysFromEnv(fromEnv);
+            setEnvSource(source);
+          }
+        }
+      } catch {
+        /* offline — use bake-time NEXT_PUBLIC_ / defaults */
+      }
 
-    if (trimmed === keys.memberKey) {
-      setRole('member');
-      setActiveKey(trimmed);
+      if (cancelled) return;
+
+      // localStorage overrides only when env is NOT the source of truth
       try {
-        localStorage.setItem('frc_auth_role', 'member');
-        localStorage.setItem('frc_auth_key', trimmed);
-      } catch {}
-      setIsAuthModalOpen(false);
-      return { success: true, role: 'member' as UserRole, message: 'Member Access Granted. Scouting & Telemetry view active.' };
-    }
+        if (!fromEnv) {
+          const savedAdmin = localStorage.getItem('frc_admin_key');
+          const savedMember = localStorage.getItem('frc_member_key');
+          if (savedAdmin) adminK = savedAdmin;
+          if (savedMember) memberK = savedMember;
+        }
+        const savedSql = localStorage.getItem('frc_sql_connection_key');
+        if (savedSql) setSqlConnectionKeyInternal(savedSql);
+      } catch {
+        /* ignore */
+      }
 
-    return { success: false, message: 'Invalid Access Key. Please check with your team lead or administrator.' };
-  };
+      setKeys({
+        adminKey: adminK,
+        memberKey: memberK,
+        lastUpdated: new Date().toISOString(),
+      });
+
+      try {
+        const savedRole = localStorage.getItem('frc_auth_role') as UserRole | null;
+        const savedActiveKey = localStorage.getItem('frc_auth_key');
+
+        if (savedRole && savedActiveKey) {
+          // Re-validate session against current keys (env may have changed)
+          const stillValid =
+            (savedRole === 'admin' && savedActiveKey === adminK) ||
+            (savedRole === 'member' && savedActiveKey === memberK);
+
+          if (stillValid) {
+            // Also confirm with server when possible
+            try {
+              const v = await fetch('/api/auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: savedActiveKey }),
+              });
+              const body = await v.json();
+              if (body.success && body.role === savedRole) {
+                setRole(savedRole);
+                setActiveKey(savedActiveKey);
+                setIsAuthModalOpen(false);
+                setAuthReady(true);
+                return;
+              }
+            } catch {
+              // Server unreachable — trust local match against env/public keys
+              setRole(savedRole);
+              setActiveKey(savedActiveKey);
+              setIsAuthModalOpen(false);
+              setAuthReady(true);
+              return;
+            }
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+
+      // Stay logged out without forcing the login modal — landing page handles entry
+      setRole('none');
+      setActiveKey(null);
+      setIsAuthModalOpen(false);
+      setAuthReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loginWithKey = useCallback(
+    async (inputKey: string): Promise<{ success: boolean; role?: UserRole; message: string }> => {
+      const trimmed = inputKey.trim();
+      if (!trimmed) {
+        return { success: false, message: 'Please enter a valid access key.' };
+      }
+
+      // Primary: server validates against FRC_ADMIN_KEY / FRC_MEMBER_KEY env
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: trimmed }),
+        });
+        const body = await res.json();
+        if (body.success && (body.role === 'admin' || body.role === 'member')) {
+          const nextRole = body.role as UserRole;
+          setRole(nextRole);
+          setActiveKey(trimmed);
+          try {
+            localStorage.setItem('frc_auth_role', nextRole);
+            localStorage.setItem('frc_auth_key', trimmed);
+          } catch {}
+          setIsAuthModalOpen(false);
+          return { success: true, role: nextRole, message: body.message };
+        }
+        if (!body.success && res.status !== 0) {
+          return {
+            success: false,
+            message: body.message || 'Invalid Access Key. Check env FRC_ADMIN_KEY / FRC_MEMBER_KEY.',
+          };
+        }
+      } catch {
+        /* fall through to local match */
+      }
+
+      // Fallback: client-side match against NEXT_PUBLIC_ / known keys (only if non-empty)
+      if (keys.adminKey && trimmed === keys.adminKey) {
+        setRole('admin');
+        setActiveKey(trimmed);
+        try {
+          localStorage.setItem('frc_auth_role', 'admin');
+          localStorage.setItem('frc_auth_key', trimmed);
+        } catch {}
+        setIsAuthModalOpen(false);
+        return {
+          success: true,
+          role: 'admin',
+          message: 'Administrator Access Granted. Full control console unlocked.',
+        };
+      }
+      if (keys.memberKey && trimmed === keys.memberKey) {
+        setRole('member');
+        setActiveKey(trimmed);
+        try {
+          localStorage.setItem('frc_auth_role', 'member');
+          localStorage.setItem('frc_auth_key', trimmed);
+        } catch {}
+        setIsAuthModalOpen(false);
+        return {
+          success: true,
+          role: 'member',
+          message: 'Member Access Granted. Student portal & scouting unlocked.',
+        };
+      }
+
+      return {
+        success: false,
+        message: 'Invalid Access Key. Set FRC_ADMIN_KEY / FRC_MEMBER_KEY in .env and restart.',
+      };
+    },
+    [keys.adminKey, keys.memberKey]
+  );
 
   const logout = () => {
     setRole('none');
@@ -120,12 +254,20 @@ export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('frc_auth_role');
       localStorage.removeItem('frc_auth_key');
     } catch {}
-    setIsAuthModalOpen(true);
+    // Return to landing — do not auto-open login modal
+    setIsAuthModalOpen(false);
   };
 
   const updateKeys = (newAdmin: string, newMember: string) => {
     if (role !== 'admin') {
       return { success: false, message: 'Permission denied. Only Administrator can modify access keys.' };
+    }
+    if (keysFromEnv) {
+      return {
+        success: false,
+        message:
+          'Keys are managed by environment variables (FRC_ADMIN_KEY / FRC_MEMBER_KEY). Update .env and restart the server.',
+      };
     }
     const cleanAdmin = newAdmin.trim();
     const cleanMember = newMember.trim();
@@ -134,7 +276,7 @@ export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
       return { success: false, message: 'Both Administrator and Member keys must be non-empty.' };
     }
     if (cleanAdmin === cleanMember) {
-      return { success: false, message: 'Administrator key and Member key must be distinct for security.' };
+      return { success: false, message: 'Administrator key and Member key must be distinct.' };
     }
 
     const updated: KeyConfig = {
@@ -149,9 +291,10 @@ export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('frc_admin_key', cleanAdmin);
       localStorage.setItem('frc_member_key', cleanMember);
       localStorage.setItem('frc_auth_key', cleanAdmin);
+      localStorage.setItem('frc_auth_role', 'admin');
     } catch {}
 
-    return { success: true, message: 'Access keys updated successfully across all pages.' };
+    return { success: true, message: 'Access keys updated for this browser session.' };
   };
 
   const setSqlConnectionKey = (key: string) => {
@@ -162,10 +305,25 @@ export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   };
 
-  const hasPermission = (action: 'manage_keys' | 'manage_sql' | 'edit_matches' | 'edit_picklists' | 'submit_scouting' | 'view_analytics') => {
+  const hasPermission = (
+    action:
+      | 'manage_keys'
+      | 'manage_sql'
+      | 'edit_matches'
+      | 'edit_picklists'
+      | 'submit_scouting'
+      | 'view_analytics'
+      | 'clear_data'
+      | 'view_admin_console'
+      | 'view_member_portal'
+  ) => {
     if (role === 'admin') return true;
     if (role === 'member') {
-      return action === 'submit_scouting' || action === 'view_analytics';
+      return (
+        action === 'submit_scouting' ||
+        action === 'view_analytics' ||
+        action === 'view_member_portal'
+      );
     }
     return false;
   };
@@ -175,19 +333,24 @@ export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
       value={{
         role,
         activeKey,
-        isAuthenticated: role !== 'none',
+        isAuthenticated: role === 'admin' || role === 'member',
         isAdmin: role === 'admin',
         isMember: role === 'member',
         keys,
         sqlConnectionKey,
         isAuthModalOpen,
         isKeyManagementOpen,
+        authReady,
+        keysFromEnv,
+        envSource,
         loginWithKey,
         logout,
         updateKeys,
         setSqlConnectionKey,
         openAuthModal: () => setIsAuthModalOpen(true),
-        closeAuthModal: () => setIsAuthModalOpen(false),
+        closeAuthModal: () => {
+          if (role === 'admin' || role === 'member') setIsAuthModalOpen(false);
+        },
         openKeyManagement: () => setIsKeyManagementOpen(true),
         closeKeyManagement: () => setIsKeyManagementOpen(false),
         hasPermission,
@@ -205,3 +368,6 @@ export function useAuthKey() {
   }
   return context;
 }
+
+// Re-export defaults for any legacy imports
+export { DEFAULT_ADMIN_KEY, DEFAULT_MEMBER_KEY };

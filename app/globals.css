@@ -1,1 +1,152 @@
 @import "tailwindcss";
+
+:root {
+  --frc-bg: #070a10;
+  --frc-surface: #0b0f17;
+  --frc-panel: #0f172a;
+  --frc-border: rgba(30, 41, 59, 0.85);
+  --frc-cyan: #22d3ee;
+  --frc-blue: #3b82f6;
+  --frc-glow: rgba(34, 211, 238, 0.15);
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 211, 238, 0.08), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(59, 130, 246, 0.06), transparent),
+    var(--frc-bg);
+  min-height: 100vh;
+  font-feature-settings: "ss01" on, "cv11" on;
+}
+
+/* Subtle noise overlay for depth */
+body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 180px 180px;
+}
+
+/* Scrollbar styling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(51, 65, 85, 0.8) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(51, 65, 85, 0.85);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.9);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Focus rings */
+:focus-visible {
+  outline: 2px solid rgba(34, 211, 238, 0.55);
+  outline-offset: 2px;
+}
+
+/* Card glass utility */
+.glass-panel {
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.92), rgba(11, 15, 23, 0.88));
+  border: 1px solid rgba(51, 65, 85, 0.7);
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 0 0 1px rgba(34, 211, 238, 0.04),
+    0 20px 40px -24px rgba(0, 0, 0, 0.7);
+}
+
+/* Glow button hover */
+.glow-cyan:hover {
+  box-shadow: 0 0 24px rgba(34, 211, 238, 0.25);
+}
+
+/* Animated gradient border helper */
+.gradient-border {
+  position: relative;
+}
+
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.5), rgba(59, 130, 246, 0.2), transparent 60%);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Selection already set on body via layout, reinforce */
+::selection {
+  background: rgba(34, 211, 238, 0.28);
+  color: #e0f2fe;
+}
+
+/* Table row polish */
+tr {
+  transition: background-color 0.12s ease;
+}
+
+/* Input polish */
+input,
+textarea,
+select {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Soft pulse for live indicators */
+@keyframes soft-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.animate-soft-pulse {
+  animation: soft-pulse 2.2s ease-in-out infinite;
+}
+
+/* Hide Next.js error overlay portal if it interferes (dev only safety) */
+nextjs-portal {
+  z-index: 100000 !important;
+}

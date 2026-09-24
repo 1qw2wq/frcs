@@ -1,88 +1,139 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { INITIAL_TEAMS, INITIAL_MATCHES, INITIAL_SCOUTING_ENTRIES, INITIAL_PIT_DATA, INITIAL_PICKLIST } from '@/lib/defaultData';
-import { MatchScoutingEntry, PitScoutingData, PicklistTeam } from '@/types/frc';
+import {
+  getFullDataset,
+  upsertScoutingEntry,
+  upsertPitData,
+  replacePicklist,
+  clearAllData,
+  resetToDefaults,
+  getAllScoutingEntries,
+  getEngineLabel,
+} from '@/lib/dataStore';
+import { isAdminAccessKey, isMemberAccessKey } from '@/lib/accessKeys';
+import type { MatchScoutingEntry, PitScoutingData, PicklistTeam } from '@/types/frc';
 
-// In-memory data store for server-side mutations
-let teamsStore = [...INITIAL_TEAMS];
-let matchesStore = [...INITIAL_MATCHES];
-let scoutingStore: MatchScoutingEntry[] = [...INITIAL_SCOUTING_ENTRIES];
-let pitStore: PitScoutingData[] = [...INITIAL_PIT_DATA];
-let picklistStore: PicklistTeam[] = [...INITIAL_PICKLIST];
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  return NextResponse.json({
-    teams: teamsStore,
-    matches: matchesStore,
-    scoutingEntries: scoutingStore,
-    pitData: pitStore,
-    picklist: picklistStore,
-    lastUpdated: new Date().toISOString(),
-  });
+  try {
+    const data = await getFullDataset();
+    return NextResponse.json(data);
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || 'Failed to load dataset', backend: getEngineLabel() },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { type, payload } = body;
+    const type: string = body.type;
+    const payload = body.data ?? body.payload;
+    const accessKey: string | undefined = body.accessKey || body.adminKey || req.headers.get('x-frc-access-key') || undefined;
 
-    if (type === 'submit_scouting') {
-      const entry: MatchScoutingEntry = {
-        ...payload,
-        id: payload.id || `scout-${Date.now()}`,
-        timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
-      };
-
-      scoutingStore.unshift(entry);
-
-      // Dynamically update team's EPA slightly based on scouted performance
-      const teamIdx = teamsStore.findIndex((t) => t.number === entry.teamNumber);
-      if (teamIdx !== -1) {
-        const totalCoral = (entry.teleopCoralL1 || 0) + (entry.teleopCoralL2 || 0) + (entry.teleopCoralL3 || 0) + (entry.teleopCoralL4 || 0);
-        const autoCoral = (entry.autoCoralL1 || 0) + (entry.autoCoralL2 || 0) + (entry.autoCoralL3 || 0) + (entry.autoCoralL4 || 0);
-        const bump = Math.min(1.5, (totalCoral + autoCoral * 1.5) * 0.1);
-        teamsStore[teamIdx] = {
-          ...teamsStore[teamIdx],
-          epa: Math.round((teamsStore[teamIdx].epa + bump) * 10) / 10,
-        };
-      }
-
-      return NextResponse.json({ success: true, entry, totalEntries: scoutingStore.length });
+    if (type === 'scoutingEntry' || type === 'submit_scouting') {
+      const entry = await upsertScoutingEntry(payload as MatchScoutingEntry);
+      const total = (await getAllScoutingEntries()).length;
+      return NextResponse.json({ success: true, entry, totalEntries: total, backend: getEngineLabel() });
     }
 
-    if (type === 'submit_pit') {
-      const pitEntry: PitScoutingData = {
-        ...payload,
-        lastChecked: new Date().toISOString().replace('T', ' ').slice(0, 16),
-      };
-
-      const existingIndex = pitStore.findIndex((p) => p.teamNumber === pitEntry.teamNumber);
-      if (existingIndex >= 0) {
-        pitStore[existingIndex] = pitEntry;
-      } else {
-        pitStore.push(pitEntry);
-      }
-
-      return NextResponse.json({ success: true, pitEntry });
+    if (type === 'pitData' || type === 'submit_pit') {
+      const pitEntry = await upsertPitData(payload as PitScoutingData);
+      return NextResponse.json({ success: true, pitEntry, backend: getEngineLabel() });
     }
 
-    if (type === 'update_picklist') {
-      if (Array.isArray(payload)) {
-        picklistStore = payload;
-        return NextResponse.json({ success: true, picklist: picklistStore });
+    if (type === 'picklist' || type === 'update_picklist') {
+      if (!Array.isArray(payload)) {
+        return NextResponse.json({ error: 'Picklist payload must be an array' }, { status: 400 });
       }
+      const picklist = await replacePicklist(payload as PicklistTeam[]);
+      return NextResponse.json({ success: true, picklist, backend: getEngineLabel() });
     }
 
-    if (type === 'reset_defaults') {
-      teamsStore = [...INITIAL_TEAMS];
-      matchesStore = [...INITIAL_MATCHES];
-      scoutingStore = [...INITIAL_SCOUTING_ENTRIES];
-      pitStore = [...INITIAL_PIT_DATA];
-      picklistStore = [...INITIAL_PICKLIST];
-      return NextResponse.json({ success: true, message: 'Database reset to championship defaults' });
+    if (type === 'clear_all' || type === 'clearAll') {
+      if (accessKey && isMemberAccessKey(accessKey) && !isAdminAccessKey(accessKey)) {
+        return NextResponse.json(
+          { error: 'Administrator access key required to clear all data.' },
+          { status: 403 }
+        );
+      }
+      if (accessKey && !isAdminAccessKey(accessKey) && !isMemberAccessKey(accessKey)) {
+        // Unknown key — still allow only if no key was required; reject bad keys
+        return NextResponse.json(
+          { error: 'Invalid access key. Use FRC_ADMIN_KEY from your environment.' },
+          { status: 403 }
+        );
+      }
+      const result = await clearAllData();
+      const dataset = await getFullDataset();
+      return NextResponse.json({
+        success: true,
+        message: `All data cleared — scouting, members, events, tasks (${result.backend})`,
+        ...result,
+        dataset,
+      });
+    }
+
+    if (type === 'reset_defaults' || type === 'resetDefaults') {
+      if (accessKey && isMemberAccessKey(accessKey) && !isAdminAccessKey(accessKey)) {
+        return NextResponse.json(
+          { error: 'Administrator access key required to reset defaults.' },
+          { status: 403 }
+        );
+      }
+      if (accessKey && !isAdminAccessKey(accessKey) && !isMemberAccessKey(accessKey)) {
+        return NextResponse.json(
+          { error: 'Invalid access key. Use FRC_ADMIN_KEY from your environment.' },
+          { status: 403 }
+        );
+      }
+      const result = await resetToDefaults();
+      const dataset = await getFullDataset();
+      return NextResponse.json({ success: true, ...result, dataset });
     }
 
     return NextResponse.json({ error: 'Invalid operation type' }, { status: 400 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Error processing data request' }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Error processing data request' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const accessKey =
+      req.headers.get('x-frc-access-key') ||
+      req.nextUrl.searchParams.get('accessKey') ||
+      undefined;
+    if (accessKey && isMemberAccessKey(accessKey) && !isAdminAccessKey(accessKey)) {
+      return NextResponse.json(
+        { error: 'Administrator access key required to clear all data.' },
+        { status: 403 }
+      );
+    }
+    if (accessKey && !isAdminAccessKey(accessKey) && !isMemberAccessKey(accessKey)) {
+      return NextResponse.json(
+        { error: 'Invalid access key. Use FRC_ADMIN_KEY from your environment.' },
+        { status: 403 }
+      );
+    }
+    const result = await clearAllData();
+    const dataset = await getFullDataset();
+    return NextResponse.json({
+      success: true,
+      message: `All tournament data cleared (${result.backend})`,
+      ...result,
+      dataset,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || 'Failed to clear data' },
+      { status: 500 }
+    );
   }
 }
