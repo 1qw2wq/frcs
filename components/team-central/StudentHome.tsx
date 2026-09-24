@@ -6,7 +6,6 @@ import {
   Shield,
   Layers,
   IdCard,
-  Radio,
   Wrench,
   RotateCw,
   Megaphone,
@@ -14,11 +13,7 @@ import {
   AlertCircle,
   Calendar,
   Plane,
-  Eye,
-  EyeOff,
-  Copy,
-  Check,
-  MoreHorizontal,
+  KeyRound,
   ChevronRight,
   GitPullRequest,
   CheckSquare,
@@ -30,7 +25,7 @@ interface StudentHomeProps {
   certifications: Certification[];
   schedule: BuildScheduleItem[];
   tasks: SubsystemTask[];
-  onOpenNfc: () => void;
+  onOpenFloorEntry: () => void;
   onOpenMachineRequest: () => void;
   onOpenHourAppeal: () => void;
   onOpenFirstSync: () => void;
@@ -38,66 +33,60 @@ interface StudentHomeProps {
   onSelectTask?: (task: SubsystemTask) => void;
   loggedHours?: number;
   isCheckedIn?: boolean;
+  memberName?: string;
+  lastEntryTime?: string | null;
 }
 
 export const StudentHome: React.FC<StudentHomeProps> = ({
   certifications,
   schedule,
   tasks,
-  onOpenNfc,
+  onOpenFloorEntry,
   onOpenMachineRequest,
   onOpenHourAppeal,
   onOpenFirstSync,
   onRequestTraining,
   onSelectTask,
-  loggedHours = 64.5,
-  isCheckedIn = true,
+  loggedHours = 0,
+  isCheckedIn = false,
+  memberName = 'Team Member',
+  lastEntryTime = null,
 }) => {
   const [taskFilter, setTaskFilter] = useState<'ALL' | 'AUTOS' | 'VISION'>('ALL');
-  const [showPin, setShowPin] = useState(false);
-  const [copiedPin, setCopiedPin] = useState(false);
 
   const filteredTasks = tasks.filter((task) => {
     if (taskFilter === 'ALL') return true;
     return task.category === taskFilter;
   });
 
-  const handleCopyPin = () => {
-    navigator.clipboard.writeText('7419');
-    setCopiedPin(true);
-    setTimeout(() => setCopiedPin(false), 2000);
-  };
-
   return (
     <div className="space-y-6 pb-12">
       {/* 1. Top System Status Tags & Welcome Header */}
       <div className="space-y-3">
-        {/* Telemetry Tags */}
-        <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-blue-950/40 border border-blue-800/60 text-blue-300">
-            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-            <span className="font-semibold uppercase tracking-wider">ROBOTICS SYSTEM ONLINE</span>
-          </div>
-          <div className="px-2.5 py-1 rounded-md bg-slate-900/60 border border-slate-800 text-slate-400">
-            FW: 2025.4.1-rc3
-          </div>
-          <div className="px-2.5 py-1 rounded-md bg-slate-900/60 border border-slate-800 text-slate-400">
-            CAN BUS: 0.12% UTIL
-          </div>
-        </div>
-
-        {/* Hero Title & Primary Action Buttons */}
+        {/* Hero */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-1">
           <div>
+            <div
+              className={`mb-2 inline-flex items-center gap-2 rounded-md border px-2.5 py-1 font-mono text-[11px] ${
+                isCheckedIn
+                  ? 'border-emerald-800/50 bg-emerald-950/30 text-emerald-300'
+                  : 'border-slate-700 bg-slate-900/50 text-slate-400'
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${isCheckedIn ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}
+              />
+              {isCheckedIn
+                ? `ON FLOOR${lastEntryTime ? ` · in at ${lastEntryTime}` : ''}`
+                : 'NOT LOGGED IN'}{' '}
+              · {loggedHours}h logged
+            </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex flex-wrap items-baseline gap-2">
-              <span>Welcome back, Maya!</span>
+              <span>Welcome, {memberName}</span>
               <span className="text-blue-400 text-xl sm:text-2xl font-mono">#5419</span>
             </h2>
-            <h3 className="text-lg font-black tracking-wider text-slate-300 uppercase mt-0.5">
-              VORTEX
-            </h3>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Co-Captain & Software Lead • Week 4 Sprint Milestone Target: 100% Autos Nominal
+              Member portal · empty until you add data · log pit entry with admin code
             </p>
           </div>
 
@@ -105,11 +94,11 @@ export const StudentHome: React.FC<StudentHomeProps> = ({
           <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
             <button
               type="button"
-              onClick={onOpenNfc}
-              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-medium text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-blue-600/25 transition cursor-pointer"
+              onClick={onOpenFloorEntry}
+              className="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white font-medium text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-cyan-600/25 transition cursor-pointer"
             >
-              <Radio className="w-4 h-4" />
-              <span>Scan In / Out (NFC)</span>
+              <KeyRound className="w-4 h-4" />
+              <span>Log floor entry</span>
             </button>
             <button
               type="button"
@@ -127,31 +116,6 @@ export const StudentHome: React.FC<StudentHomeProps> = ({
               <Clock className="w-4 h-4 text-slate-400" />
               <span>Hour Appeal</span>
             </button>
-            <button
-              type="button"
-              onClick={onOpenFirstSync}
-              className="px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 active:scale-95 text-slate-200 font-medium text-xs sm:text-sm flex items-center gap-2 transition cursor-pointer"
-            >
-              <RotateCw className="w-4 h-4 text-slate-400" />
-              <span>FIRST Sync</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Urgent Announcement Bar */}
-        <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-800/40 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-slate-300">
-          <div className="flex items-center gap-2 overflow-hidden">
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold uppercase tracking-wider shrink-0 text-[10px]">
-              <Megaphone className="w-3 h-3 text-amber-400" />
-              <span>URGENT ANNOUNCEMENT</span>
-            </div>
-            <p className="truncate text-slate-300">
-              Intake Subsystem Testing tonight at 6:30 PM • Machine Shop opens 4:00 PM • Bring high-voltage eye protection
-            </p>
-          </div>
-          <div className="flex items-center gap-1 font-mono text-emerald-400 font-semibold shrink-0 text-[11px]">
-            <Clock className="w-3.5 h-3.5" />
-            <span>STARTS IN 02H 14M</span>
           </div>
         </div>
       </div>
@@ -530,47 +494,31 @@ export const StudentHome: React.FC<StudentHomeProps> = ({
             </div>
           </div>
 
-          {/* Card: Quick Shop Kiosk PIN */}
+          {/* Card: Floor entry via admin code */}
           <div className="p-5 rounded-2xl bg-[#0F172A] border border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-mono font-bold tracking-wider text-slate-400 uppercase">
-                QUICK SHOP KIOSK PIN
+                PIT / FLOOR ENTRY
               </span>
-              <button
-                type="button"
-                className="p-1 text-slate-500 hover:text-slate-300"
-                aria-label="Options"
-              >
-                <MoreHorizontal className="w-4 h-4" />
-              </button>
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-              <div className="font-mono text-xl font-bold tracking-widest text-white">
-                {showPin ? '7419' : '••••'}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPin(!showPin)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-mono text-slate-300 transition flex items-center gap-1.5"
-                >
-                  {showPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  <span>{showPin ? 'HIDE' : 'REVEAL'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCopyPin}
-                  title="Copy 4-digit PIN"
-                  className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 transition"
-                >
-                  {copiedPin ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {lastEntryTime
+                ? `Last logged enter time: ${lastEntryTime}`
+                : 'No enter time logged yet for this session.'}
+            </p>
 
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Tap your RFID sticker on the pit reader or enter your 4-digit token at the entryway terminal.
+            <button
+              type="button"
+              onClick={onOpenFloorEntry}
+              className="w-full px-3 py-2.5 rounded-xl bg-cyan-600/90 hover:bg-cyan-500 text-white text-xs font-bold font-mono flex items-center justify-center gap-2"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              Enter admin code to log time
+            </button>
+
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Your admin generates a dynamic code each session. No fixed PIN or NFC scale-in.
             </p>
           </div>
         </div>

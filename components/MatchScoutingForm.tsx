@@ -203,17 +203,29 @@ export const MatchScoutingForm: React.FC<MatchScoutingFormProps> = ({
 
             <div>
               <label className="block text-xs font-mono text-slate-400 mb-1">TEAM #</label>
-              <select
-                value={teamNumber}
-                onChange={(e) => setTeamNumber(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-blue-500"
-              >
-                {teams.map((t) => (
-                  <option key={t.number} value={t.number}>
-                    #{t.number} - {t.name}
-                  </option>
-                ))}
-              </select>
+              {teams.length === 0 ? (
+                <input
+                  type="number"
+                  min={1}
+                  value={teamNumber || ''}
+                  onChange={(e) => setTeamNumber(Number(e.target.value))}
+                  placeholder="Add teams above, or type #"
+                  className="w-full px-3 py-2 bg-slate-950 border border-amber-500/40 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-amber-400"
+                  required
+                />
+              ) : (
+                <select
+                  value={teams.some((t) => t.number === teamNumber) ? teamNumber : teams[0].number}
+                  onChange={(e) => setTeamNumber(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-blue-500"
+                >
+                  {teams.map((t) => (
+                    <option key={t.number} value={t.number}>
+                      #{t.number} - {t.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div>
