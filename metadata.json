@@ -1,0 +1,8 @@
+{
+  "name": "FRC Telemetry & Scouting Command Center",
+  "description": "Full-featured FIRST Robotics Competition (FRC) dashboard with dual-key access control for administrators and members, live match analysis, pit scouting, SQL Server backend connector, picklist builder, and robot telemetry.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
