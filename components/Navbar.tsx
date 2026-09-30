@@ -13,7 +13,6 @@ import {
   ClipboardList,
   Wrench,
   Trophy,
-  Cpu,
   Server,
   Sparkles,
 } from 'lucide-react';
@@ -43,7 +42,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, sqlStat
           },
         ]
       : []),
-    { id: 'telemetry', label: 'Robot Telemetry', icon: Cpu },
   ];
 
   return (

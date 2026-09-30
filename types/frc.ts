@@ -129,22 +129,4 @@ export interface PicklistTeam {
   dnpReason?: string;
 }
 
-export interface RobotTelemetryState {
-  connected: boolean;
-  batteryVoltage: number;
-  rioCpuPercent: number;
-  canUtilization: number;
-  loopTimeMs: number;
-  wifiLatencyMs: number;
-  pneumaticsPsi: number;
-  mode: 'Teleop' | 'Autonomous' | 'Disabled' | 'Test';
-  matchTimeRemaining: number;
-  subsystems: {
-    drivetrain: boolean;
-    elevator: boolean;
-    intake: boolean;
-    visionCameras: boolean;
-    wristPivot: boolean;
-    climber: boolean;
-  };
-}
+

@@ -30,7 +30,6 @@ import { MatchScoutingForm } from '@/components/MatchScoutingForm';
 import { PitScouting } from '@/components/PitScouting';
 import { TeamAnalytics } from '@/components/TeamAnalytics';
 import { PicklistBuilder } from '@/components/PicklistBuilder';
-import { RobotTelemetry } from '@/components/RobotTelemetry';
 import { SqlServerManager } from '@/components/SqlServerManager';
 import { ScoutingTeamsPanel } from '@/components/ScoutingTeamsPanel';
 
@@ -669,8 +668,6 @@ function DashboardContent() {
                     onSelectTeam={handleSelectTeam}
                   />
                 )}
-
-                {scoutingTab === 'telemetry' && <RobotTelemetry />}
 
                 {scoutingTab === 'sql' && isAdmin && (
                   <SqlServerManager onDatasetChange={handleSqlDatasetChange} />
