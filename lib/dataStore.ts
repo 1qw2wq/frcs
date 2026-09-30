@@ -633,10 +633,11 @@ export async function clearAllData(): Promise<{ cleared: string[]; timestamp: st
   }
 
   if (isSupabaseConfigured()) {
-    const sb = getSupabase()!;
+    // Untyped client avoids "Type instantiation is excessively deep" on dynamic .from(table)
+    const sb = getSupabase()! as any;
     const wipe = async (table: string, col: string, sentinel: string | number) => {
-      const { error } = await sb.from(table).delete().neq(col as any, sentinel as any);
-      return error;
+      const { error } = await sb.from(table).delete().neq(col, sentinel);
+      return error as { message: string } | null;
     };
     const errors = (
       await Promise.all([
@@ -645,13 +646,22 @@ export async function clearAllData(): Promise<{ cleared: string[]; timestamp: st
         wipe('picklist', 'team_number', -999999999),
         wipe('matches', 'match_number', -999999999),
         wipe('teams', 'number', -999999999),
+        wipe('collection_items', 'id', '__impossible__'),
+        wipe('member_accounts', 'id', '__impossible__'),
       ])
-    ).filter(Boolean);
+    ).filter(Boolean) as { message: string }[];
 
     if (errors.length) {
-      throw new Error(
-        `Supabase clear failed: ${errors.map((e) => e!.message).join('; ')}. Ensure schema.sql was applied and service role key is set.`
+      // collection_items / member_accounts may be missing until schema.sql is applied
+      const hard = errors.filter(
+        (e) =>
+          !/relation|does not exist|schema cache|Could not find/i.test(e.message || '')
       );
+      if (hard.length) {
+        throw new Error(
+          `Supabase clear failed: ${hard.map((e) => e.message).join('; ')}. Ensure schema.sql was applied and service role key is set.`
+        );
+      }
     }
 
     try {
@@ -810,10 +820,10 @@ export async function getTableStats() {
     return pg.getTableStats();
   }
   if (isSupabaseConfigured()) {
-    const sb = getSupabase()!;
+    const sb = getSupabase()! as any;
     const countOf = async (table: string) => {
       const { count } = await sb.from(table).select('*', { count: 'exact', head: true });
-      return count || 0;
+      return (count as number) || 0;
     };
     const base = sqlite.getTableStats();
     // Reuse column defs from sqlite helper, refresh counts
@@ -906,7 +916,17 @@ export async function executeSql(sql: string) {
       const fromMatch = clean.match(/from\s+(\w+)/i);
       if (upper.startsWith('SELECT') && fromMatch) {
         const table = fromMatch[1].toLowerCase();
-        const allowed = ['teams', 'matches', 'match_scouting', 'pit_scouting', 'picklist', 'access_keys', 'meta'];
+        const allowed = [
+          'teams',
+          'matches',
+          'match_scouting',
+          'pit_scouting',
+          'picklist',
+          'access_keys',
+          'meta',
+          'collection_items',
+          'member_accounts',
+        ];
         if (!allowed.includes(table)) {
           return {
             columns: [],
@@ -917,7 +937,8 @@ export async function executeSql(sql: string) {
             error: `Table '${table}' not allowed. Use: ${allowed.join(', ')}`,
           };
         }
-        const sb = getSupabase()!;
+        // Untyped to avoid deep Supabase generic instantiation on dynamic table names
+        const sb = getSupabase()! as any;
         let q = sb.from(table).select('*');
         const limitMatch = clean.match(/limit\s+(\d+)/i);
         if (limitMatch) q = q.limit(parseInt(limitMatch[1], 10));
@@ -925,12 +946,14 @@ export async function executeSql(sql: string) {
 
         const orderMatch = clean.match(/order\s+by\s+(\w+)\s*(asc|desc)?/i);
         if (orderMatch) {
-          q = q.order(orderMatch[1], { ascending: (orderMatch[2] || 'asc').toLowerCase() !== 'desc' });
+          q = q.order(orderMatch[1], {
+            ascending: (orderMatch[2] || 'asc').toLowerCase() !== 'desc',
+          });
         }
 
         const { data, error } = await q;
         if (error) throw error;
-        const rows = data || [];
+        const rows = (data || []) as Record<string, unknown>[];
         const columns = rows.length ? Object.keys(rows[0]) : ['result'];
         return {
           columns,
