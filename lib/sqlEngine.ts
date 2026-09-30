@@ -108,13 +108,34 @@ export const DEFAULT_TABLE_DEFINITIONS: SqlTableDefinition[] = [
   },
   {
     name: 'access_keys',
-    rowCount: 2,
+    rowCount: 0,
     description: 'Authentication access keys for Administrator and Member roles',
     columns: [
       { name: 'role', type: 'TEXT', isPrimary: true },
       { name: 'key_value', type: 'TEXT' },
       { name: 'permissions', type: 'TEXT' },
       { name: 'status', type: 'TEXT' },
+    ],
+  },
+  {
+    name: 'collection_items',
+    rowCount: 0,
+    description: 'Team Central collections (roster, tasks, floor_log, floor_entry_codes, …)',
+    columns: [
+      { name: 'collection', type: 'TEXT', isPrimary: true },
+      { name: 'id', type: 'TEXT', isPrimary: true },
+      { name: 'data', type: 'TEXT' },
+    ],
+  },
+  {
+    name: 'member_accounts',
+    rowCount: 0,
+    description: 'Member name/password accounts (token only at register)',
+    columns: [
+      { name: 'id', type: 'TEXT', isPrimary: true },
+      { name: 'name', type: 'TEXT' },
+      { name: 'name_key', type: 'TEXT' },
+      { name: 'created_at', type: 'TEXT' },
     ],
   },
 ];

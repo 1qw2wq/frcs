@@ -909,11 +909,13 @@ export async function clearAllData(): Promise<{ cleared: string[]; timestamp: st
       'roster',
       'tasks',
       'floor_log',
+      'floor_entry_codes',
       'engineering_notes',
       'outreach_demos',
       'machine_reservations',
       'hour_appeals',
       'certifications',
+      'member_accounts',
     ],
     timestamp: ts,
   };
@@ -945,15 +947,99 @@ export async function getTableStats() {
   };
 
   return [
-    { name: 'teams', rowCount: await count('teams'), description: 'FRC teams', columns: [{ name: 'number', type: 'INTEGER', isPrimary: true }, { name: 'name', type: 'TEXT' }] },
-    { name: 'matches', rowCount: await count('matches'), description: 'Matches', columns: [{ name: 'match_number', type: 'INTEGER', isPrimary: true }] },
-    { name: 'match_scouting', rowCount: await count('match_scouting'), description: 'Scout entries', columns: [{ name: 'id', type: 'TEXT', isPrimary: true }] },
-    { name: 'pit_scouting', rowCount: await count('pit_scouting'), description: 'Pit data', columns: [{ name: 'team_number', type: 'INTEGER', isPrimary: true }] },
-    { name: 'picklist', rowCount: await count('picklist'), description: 'Picklist', columns: [{ name: 'team_number', type: 'INTEGER', isPrimary: true }] },
-    { name: 'roster (members)', rowCount: await collCount('roster'), description: 'Team members list', columns: [{ name: 'id', type: 'TEXT' }] },
-    { name: 'tasks', rowCount: await collCount('tasks'), description: 'Subsystem tasks', columns: [{ name: 'id', type: 'TEXT' }] },
-    { name: 'floor_log', rowCount: await collCount('floor_log'), description: 'Floor check-ins', columns: [{ name: 'id', type: 'TEXT' }] },
-    { name: 'outreach_demos', rowCount: await collCount('outreach_demos'), description: 'Events / demos', columns: [{ name: 'id', type: 'TEXT' }] },
+    {
+      name: 'teams',
+      rowCount: await count('teams'),
+      description: 'FRC teams',
+      columns: [
+        { name: 'number', type: 'INTEGER', isPrimary: true },
+        { name: 'name', type: 'TEXT' },
+      ],
+    },
+    {
+      name: 'matches',
+      rowCount: await count('matches'),
+      description: 'Matches',
+      columns: [{ name: 'match_number', type: 'INTEGER', isPrimary: true }],
+    },
+    {
+      name: 'match_scouting',
+      rowCount: await count('match_scouting'),
+      description: 'Scout entries',
+      columns: [{ name: 'id', type: 'TEXT', isPrimary: true }],
+    },
+    {
+      name: 'pit_scouting',
+      rowCount: await count('pit_scouting'),
+      description: 'Pit data',
+      columns: [{ name: 'team_number', type: 'INTEGER', isPrimary: true }],
+    },
+    {
+      name: 'picklist',
+      rowCount: await count('picklist'),
+      description: 'Picklist',
+      columns: [{ name: 'team_number', type: 'INTEGER', isPrimary: true }],
+    },
+    {
+      name: 'access_keys',
+      rowCount: await count('access_keys'),
+      description: 'Auth access keys (env-backed)',
+      columns: [
+        { name: 'role', type: 'TEXT', isPrimary: true },
+        { name: 'key_value', type: 'TEXT' },
+      ],
+    },
+    {
+      name: 'collection_items',
+      rowCount: await count('collection_items'),
+      description: 'Team Central collections (roster, tasks, floor_log, floor_entry_codes, …)',
+      columns: [
+        { name: 'collection', type: 'TEXT', isPrimary: true },
+        { name: 'id', type: 'TEXT', isPrimary: true },
+        { name: 'data', type: 'JSONB' },
+      ],
+    },
+    {
+      name: 'member_accounts',
+      rowCount: await count('member_accounts'),
+      description: 'Member name/password accounts',
+      columns: [
+        { name: 'id', type: 'TEXT', isPrimary: true },
+        { name: 'name', type: 'TEXT' },
+        { name: 'name_key', type: 'TEXT' },
+        { name: 'created_at', type: 'TEXT' },
+      ],
+    },
+    {
+      name: 'roster (members)',
+      rowCount: await collCount('roster'),
+      description: 'Team members list',
+      columns: [{ name: 'id', type: 'TEXT' }],
+    },
+    {
+      name: 'tasks',
+      rowCount: await collCount('tasks'),
+      description: 'Subsystem tasks',
+      columns: [{ name: 'id', type: 'TEXT' }],
+    },
+    {
+      name: 'floor_log',
+      rowCount: await collCount('floor_log'),
+      description: 'Floor check-ins',
+      columns: [{ name: 'id', type: 'TEXT' }],
+    },
+    {
+      name: 'floor_entry_codes',
+      rowCount: await collCount('floor_entry_codes'),
+      description: 'Admin-issued floor entry codes',
+      columns: [{ name: 'id', type: 'TEXT' }],
+    },
+    {
+      name: 'outreach_demos',
+      rowCount: await collCount('outreach_demos'),
+      description: 'Events / demos',
+      columns: [{ name: 'id', type: 'TEXT' }],
+    },
   ];
 }
 
@@ -963,7 +1049,13 @@ export async function executeSql(sql: string) {
   const clean = sql.trim();
   const upper = clean.toUpperCase();
   try {
-    if (upper === 'CLEAR ALL DATA' || upper.startsWith('CLEAR DATABASE') || upper === 'TRUNCATE ALL') {
+    if (
+      upper === 'CLEAR ALL DATA' ||
+      upper === 'CLEAR ALL' ||
+      upper === 'CLEAR' ||
+      upper.startsWith('CLEAR DATABASE') ||
+      upper === 'TRUNCATE ALL'
+    ) {
       const result = await clearAllData();
       return {
         columns: ['status', 'tables_cleared', 'timestamp'],
@@ -995,7 +1087,8 @@ export async function executeSql(sql: string) {
     }
     if (upper.startsWith('SELECT') || upper.startsWith('WITH')) {
       // Safety: only allow simple SELECTs against known tables
-      const allowed = /from\s+(teams|matches|match_scouting|pit_scouting|picklist|access_keys|meta|collection_items)\b/i;
+      const allowed =
+        /from\s+(teams|matches|match_scouting|pit_scouting|picklist|access_keys|meta|collection_items|member_accounts)\b/i;
       if (!allowed.test(clean) && !/from\s+information_schema/i.test(clean)) {
         return {
           columns: [],
@@ -1003,7 +1096,8 @@ export async function executeSql(sql: string) {
           rowCount: 0,
           executionTimeMs: 0,
           rawSql: clean,
-          error: 'Only SELECT on app tables is allowed via console (teams, matches, match_scouting, …).',
+          error:
+            'Only SELECT on app tables is allowed via console (teams, matches, scouting, collection_items, member_accounts, …).',
         };
       }
       const rows = await q(clean);

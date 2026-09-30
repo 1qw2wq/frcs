@@ -42,7 +42,14 @@ export const SqlServerManager: React.FC<SqlServerManagerProps> = ({ onDatasetCha
   } | null>(null);
 
   const [queryInput, setQueryInput] = useState<string>(
-    'SELECT number, name, epa, rank, wins, drivetrain FROM teams ORDER BY epa DESC LIMIT 10;'
+    `SELECT 'teams' AS table_name, COUNT(*) AS rows FROM teams
+UNION ALL SELECT 'matches', COUNT(*) FROM matches
+UNION ALL SELECT 'match_scouting', COUNT(*) FROM match_scouting
+UNION ALL SELECT 'pit_scouting', COUNT(*) FROM pit_scouting
+UNION ALL SELECT 'picklist', COUNT(*) FROM picklist
+UNION ALL SELECT 'collection_items', COUNT(*) FROM collection_items
+UNION ALL SELECT 'member_accounts', COUNT(*) FROM member_accounts
+ORDER BY table_name;`
   );
   const [isExecuting, setIsExecuting] = useState(false);
   const [queryResult, setQueryResult] = useState<SqlQueryResult | null>(null);
@@ -216,78 +223,182 @@ export const SqlServerManager: React.FC<SqlServerManagerProps> = ({ onDatasetCha
     window.open('/api/sql?action=export_dump', '_blank');
   };
 
+  const emptyDataset = () => ({
+    teams: [] as FrcTeam[],
+    matches: [] as FrcMatch[],
+    scoutingEntries: [] as MatchScoutingEntry[],
+    pitData: [] as PitScoutingData[],
+    picklist: [] as PicklistTeam[],
+    certifications: [],
+    tasks: [],
+    roster: [],
+    floorLog: [],
+    notes: [],
+    demos: [],
+    machineReservations: [],
+    hourAppeals: [],
+    loggedHours: 0,
+    isCheckedIn: false,
+  });
+
   const handleClearAll = async () => {
     if (!isAdmin) {
       setActionBanner({ type: 'err', text: 'Administrator key required to clear data.' });
       return;
     }
-    if (clearConfirm.trim().toUpperCase() !== 'CLEAR ALL') {
-      setActionBanner({ type: 'err', text: 'Type CLEAR ALL exactly to confirm irreversible wipe.' });
+    const confirmText = clearConfirm.trim().toUpperCase();
+    if (confirmText !== 'CLEAR ALL' && confirmText !== 'CLEAR') {
+      setActionBanner({
+        type: 'err',
+        text: 'Type CLEAR ALL (or CLEAR) exactly to confirm irreversible wipe.',
+      });
       return;
     }
     setIsClearing(true);
     setActionBanner(null);
+    // Optimistic empty UI so the rest of the app updates immediately
+    applyDataset(emptyDataset());
     try {
-      // Try SQL route first, then data route as fallback
+      const key = activeKey || keys.adminKey || '';
       let data: any = null;
-      const res = await fetch('/api/sql', {
-        method: 'POST',
-        headers: adminHeaders(),
-        body: JSON.stringify({
-          action: 'clear_all',
-          accessKey: activeKey || keys.adminKey,
-        }),
-      });
-      data = await res.json();
+      let lastError = '';
 
-      if (!res.ok || !data.success) {
-        const res2 = await fetch('/api/data', {
+      // 1) Dedicated clear_all on SQL API
+      try {
+        const res = await fetch('/api/sql', {
           method: 'POST',
           headers: adminHeaders(),
-          body: JSON.stringify({
-            type: 'clear_all',
-            accessKey: activeKey || keys.adminKey,
-          }),
+          body: JSON.stringify({ action: 'clear_all', accessKey: key }),
         });
-        data = await res2.json();
-        if (!res2.ok || !data.success) {
-          setActionBanner({ type: 'err', text: data.error || 'Clear failed' });
-          return;
+        data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+          lastError = data.error || data.message || `SQL clear HTTP ${res.status}`;
+          data = null;
+        }
+      } catch (e: any) {
+        lastError = e.message || 'SQL clear network error';
+        data = null;
+      }
+
+      // 2) Fallback: data API
+      if (!data?.success) {
+        try {
+          const res2 = await fetch('/api/data', {
+            method: 'POST',
+            headers: adminHeaders(),
+            body: JSON.stringify({ type: 'clear_all', accessKey: key }),
+          });
+          data = await res2.json().catch(() => ({}));
+          if (!res2.ok || !data.success) {
+            lastError = data.error || data.message || lastError || `Data clear HTTP ${res2.status}`;
+            data = null;
+          }
+        } catch (e: any) {
+          lastError = e.message || lastError;
+          data = null;
         }
       }
 
+      // 3) Fallback: DELETE /api/sql
+      if (!data?.success) {
+        try {
+          const res3 = await fetch('/api/sql', {
+            method: 'DELETE',
+            headers: adminHeaders(),
+          });
+          data = await res3.json().catch(() => ({}));
+          if (!res3.ok || !data.success) {
+            lastError = data.error || lastError || 'DELETE clear failed';
+            data = null;
+          }
+        } catch (e: any) {
+          lastError = e.message || lastError;
+          data = null;
+        }
+      }
+
+      // 4) Fallback: execute CLEAR ALL DATA statement
+      if (!data?.success) {
+        try {
+          const res4 = await fetch('/api/sql', {
+            method: 'POST',
+            headers: adminHeaders(),
+            body: JSON.stringify({
+              action: 'execute',
+              query: 'CLEAR ALL DATA',
+              accessKey: key,
+            }),
+          });
+          data = await res4.json().catch(() => ({}));
+          if (res4.ok && (data.success || data.rows?.[0]?.status === 'CLEARED')) {
+            data = {
+              success: true,
+              cleared: String(data.rows?.[0]?.tables_cleared || '')
+                .split(',')
+                .map((s: string) => s.trim())
+                .filter(Boolean),
+              timestamp: data.rows?.[0]?.timestamp || new Date().toISOString(),
+              backend: data.rows?.[0]?.backend || backendEngine,
+              dataset: data.dataset,
+            };
+          } else {
+            lastError = data.error || lastError || 'Execute CLEAR failed';
+            data = null;
+          }
+        } catch (e: any) {
+          lastError = e.message || lastError;
+          data = null;
+        }
+      }
+
+      if (!data?.success) {
+        setActionBanner({
+          type: 'err',
+          text: lastError || 'Clear failed. Check admin key and server logs.',
+        });
+        // Re-fetch so UI matches real DB if optimistic clear was wrong
+        try {
+          const refreshed = await fetch('/api/data', { cache: 'no-store' });
+          if (refreshed.ok) applyDataset(await refreshed.json());
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+
+      const clearedList: string[] = Array.isArray(data.cleared)
+        ? data.cleared
+        : String(data.cleared || 'all tables')
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean);
+
       setActionBanner({
         type: 'ok',
-        text: `Cleared (${data.backend || backendEngine}): ${(data.cleared || ['all tables']).join(', ')}`,
+        text: `Cleared everything (${data.backend || backendEngine}): ${clearedList.join(', ') || 'all tables'}`,
       });
       setClearConfirm('');
-      // Force empty UI immediately (scouting + members/events/tasks), then apply server dataset
-      applyDataset({
-        teams: [],
-        matches: [],
-        scoutingEntries: [],
-        pitData: [],
-        picklist: [],
-        certifications: [],
-        tasks: [],
-        roster: [],
-        floorLog: [],
-        notes: [],
-        demos: [],
-        machineReservations: [],
-        hourAppeals: [],
-        loggedHours: 0,
-        isCheckedIn: false,
-      });
+
+      // Empty UI, then server truth
+      applyDataset(emptyDataset());
       if (data.dataset) applyDataset(data.dataset);
+      else {
+        try {
+          const refreshed = await fetch('/api/data', { cache: 'no-store' });
+          if (refreshed.ok) applyDataset(await refreshed.json());
+        } catch {
+          /* keep empty */
+        }
+      }
+
       await fetchSchema();
       setQueryResult({
         columns: ['status', 'tables_cleared', 'timestamp', 'backend'],
         rows: [
           {
             status: 'CLEARED',
-            tables_cleared: (data.cleared || []).join(', '),
-            timestamp: data.timestamp,
+            tables_cleared: clearedList.join(', ') || 'all',
+            timestamp: data.timestamp || new Date().toISOString(),
             backend: data.backend || backendEngine,
           },
         ],
@@ -295,7 +406,18 @@ export const SqlServerManager: React.FC<SqlServerManagerProps> = ({ onDatasetCha
         executionTimeMs: 1,
         rawSql: 'CLEAR ALL DATA',
       });
+      const countsSql = `SELECT 'teams' AS table_name, COUNT(*) AS rows FROM teams
+UNION ALL SELECT 'matches', COUNT(*) FROM matches
+UNION ALL SELECT 'match_scouting', COUNT(*) FROM match_scouting
+UNION ALL SELECT 'pit_scouting', COUNT(*) FROM pit_scouting
+UNION ALL SELECT 'picklist', COUNT(*) FROM picklist
+UNION ALL SELECT 'collection_items', COUNT(*) FROM collection_items
+UNION ALL SELECT 'member_accounts', COUNT(*) FROM member_accounts
+ORDER BY table_name;`;
+      setQueryInput(countsSql);
       setActiveTab('console');
+      // Prove tables are empty
+      await handleRunQuery(countsSql);
     } catch (e: any) {
       setActionBanner({ type: 'err', text: e.message || 'Clear failed' });
     } finally {
@@ -353,6 +475,17 @@ export const SqlServerManager: React.FC<SqlServerManagerProps> = ({ onDatasetCha
 
   const presets = [
     {
+      label: 'Row counts (all tables)',
+      query: `SELECT 'teams' AS table_name, COUNT(*) AS rows FROM teams
+UNION ALL SELECT 'matches', COUNT(*) FROM matches
+UNION ALL SELECT 'match_scouting', COUNT(*) FROM match_scouting
+UNION ALL SELECT 'pit_scouting', COUNT(*) FROM pit_scouting
+UNION ALL SELECT 'picklist', COUNT(*) FROM picklist
+UNION ALL SELECT 'collection_items', COUNT(*) FROM collection_items
+UNION ALL SELECT 'member_accounts', COUNT(*) FROM member_accounts
+ORDER BY table_name;`,
+    },
+    {
       label: 'Top Teams by EPA',
       query: 'SELECT number, name, epa, rank, wins, drivetrain FROM teams ORDER BY epa DESC;',
     },
@@ -360,6 +493,10 @@ export const SqlServerManager: React.FC<SqlServerManagerProps> = ({ onDatasetCha
       label: 'Match Scouting Log',
       query:
         'SELECT match_number, team_number, scout_name, cycles, climb_status FROM match_scouting ORDER BY match_number DESC;',
+    },
+    {
+      label: 'Clear everything (SQL)',
+      query: 'CLEAR ALL DATA',
     },
     {
       label: 'Pit Inspections',
@@ -845,17 +982,18 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...`}</pre>
                   <Trash2 className="h-6 w-6" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Clear All Data</h3>
+                  <h3 className="text-base font-bold text-white">Clear everything</h3>
                   <p className="text-xs text-slate-400">
-                    Wipe every row from teams, matches, scouting, pit & picklist
+                    Wipe scouting, teams, matches, members, floor codes, tasks — all of it
                   </p>
                 </div>
               </div>
 
               <div className="mb-4 rounded-xl border border-rose-500/20 bg-rose-950/30 p-3 text-xs leading-relaxed text-rose-200/80">
-                <strong className="text-rose-300">Irreversible.</strong> Wipes scouting tables{' '}
-                <em>and</em> Team Central sample data (members, floor log, tasks, notes, demos,
-                machine slots, hour appeals). Access keys are kept. Use Reset to restore seeds.
+                <strong className="text-rose-300">Irreversible.</strong> Deletes teams, matches,
+                match/pit scouting, picklist, Team Central (roster, tasks, floor log, entry codes,
+                notes, demos, machines, appeals), and member accounts. Env access keys stay. Use
+                Restore Seed Data if you want demo rows back.
               </div>
 
               <label className="mb-1.5 block text-[11px] font-mono font-bold uppercase tracking-wider text-slate-400">
@@ -865,22 +1003,28 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...`}</pre>
                 value={clearConfirm}
                 onChange={(e) => setClearConfirm(e.target.value)}
                 placeholder="CLEAR ALL"
-                disabled={!isAdmin}
+                disabled={!isAdmin || isClearing}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void handleClearAll();
+                  }
+                }}
                 className="mb-3 w-full rounded-xl border border-rose-500/30 bg-slate-950 px-3 py-2.5 font-mono text-xs text-rose-200 placeholder:text-slate-600 focus:border-rose-400 focus:outline-none disabled:opacity-50"
               />
 
               <button
                 type="button"
-                onClick={handleClearAll}
+                onClick={() => void handleClearAll()}
                 disabled={
                   isClearing ||
                   !isAdmin ||
-                  clearConfirm.trim().toUpperCase() !== 'CLEAR ALL'
+                  !['CLEAR ALL', 'CLEAR'].includes(clearConfirm.trim().toUpperCase())
                 }
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-rose-600/30 transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <Trash2 className="h-4 w-4" />
-                {isClearing ? 'Clearing Database...' : 'Clear All SQL Data'}
+                <Trash2 className={`h-4 w-4 ${isClearing ? 'animate-pulse' : ''}`} />
+                {isClearing ? 'Clearing everything…' : 'Clear all data now'}
               </button>
 
               {!isAdmin && (

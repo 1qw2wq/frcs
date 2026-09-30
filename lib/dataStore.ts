@@ -634,13 +634,20 @@ export async function clearAllData(): Promise<{ cleared: string[]; timestamp: st
 
   if (isSupabaseConfigured()) {
     const sb = getSupabase()!;
-    const { error: e1 } = await sb.from('match_scouting').delete().neq('id', '__impossible__');
-    const { error: e2 } = await sb.from('pit_scouting').delete().neq('team_number', -999999999);
-    const { error: e3 } = await sb.from('picklist').delete().neq('team_number', -999999999);
-    const { error: e4 } = await sb.from('matches').delete().neq('match_number', -999999999);
-    const { error: e5 } = await sb.from('teams').delete().neq('number', -999999999);
+    const wipe = async (table: string, col: string, sentinel: string | number) => {
+      const { error } = await sb.from(table).delete().neq(col as any, sentinel as any);
+      return error;
+    };
+    const errors = (
+      await Promise.all([
+        wipe('match_scouting', 'id', '__impossible__'),
+        wipe('pit_scouting', 'team_number', -999999999),
+        wipe('picklist', 'team_number', -999999999),
+        wipe('matches', 'match_number', -999999999),
+        wipe('teams', 'number', -999999999),
+      ])
+    ).filter(Boolean);
 
-    const errors = [e1, e2, e3, e4, e5].filter(Boolean);
     if (errors.length) {
       throw new Error(
         `Supabase clear failed: ${errors.map((e) => e!.message).join('; ')}. Ensure schema.sql was applied and service role key is set.`
@@ -651,6 +658,11 @@ export async function clearAllData(): Promise<{ cleared: string[]; timestamp: st
       await supabaseClearTeamCentral();
     } catch {
       /* collection_items optional until schema applied */
+    }
+    try {
+      await sb.from('member_accounts').delete().neq('id', '__impossible__');
+    } catch {
+      /* optional table */
     }
 
     await sb.from('meta').upsert({ key: 'cleared_at', value: new Date().toISOString() });
@@ -812,6 +824,8 @@ export async function getTableStats() {
       pit_scouting: await countOf('pit_scouting'),
       picklist: await countOf('picklist'),
       access_keys: await countOf('access_keys'),
+      collection_items: await countOf('collection_items'),
+      member_accounts: await countOf('member_accounts'),
     };
     return base.map((t) => ({ ...t, rowCount: counts[t.name] ?? t.rowCount }));
   }
@@ -830,7 +844,13 @@ export async function executeSql(sql: string) {
     const upper = clean.toUpperCase();
 
     try {
-      if (upper === 'CLEAR ALL DATA' || upper === 'TRUNCATE ALL' || upper.startsWith('CLEAR DATABASE')) {
+      if (
+        upper === 'CLEAR ALL DATA' ||
+        upper === 'CLEAR ALL' ||
+        upper === 'CLEAR' ||
+        upper === 'TRUNCATE ALL' ||
+        upper.startsWith('CLEAR DATABASE')
+      ) {
         const result = await clearAllData();
         return {
           columns: ['status', 'tables_cleared', 'timestamp', 'backend'],

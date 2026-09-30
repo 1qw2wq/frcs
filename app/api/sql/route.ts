@@ -15,15 +15,25 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function requireAdmin(accessKey?: string | null): { ok: boolean; error?: string } {
-  if (!accessKey) {
-    // Allow if no key sent — client UI still gates; destructive ops should send a key
-    return { ok: true };
-  }
+  // When FRC_ADMIN_KEY is configured, destructive ops must present a valid admin key.
   if (isAdminAccessKey(accessKey)) return { ok: true };
   if (isMemberAccessKey(accessKey)) {
     return { ok: false, error: 'Administrator access key required.' };
   }
-  return { ok: false, error: 'Invalid access key. Check FRC_ADMIN_KEY in your environment.' };
+  if (accessKey) {
+    return { ok: false, error: 'Invalid access key. Check FRC_ADMIN_KEY in your environment.' };
+  }
+  // No key provided — allow only if admin key is not configured (local open demo)
+  const adminConfigured = Boolean(
+    (process.env.FRC_ADMIN_KEY || process.env.NEXT_PUBLIC_FRC_ADMIN_KEY || '').trim()
+  );
+  if (adminConfigured) {
+    return {
+      ok: false,
+      error: 'Administrator access key required. Sign in as admin and retry.',
+    };
+  }
+  return { ok: true };
 }
 
 export async function POST(req: NextRequest) {
@@ -39,7 +49,13 @@ export async function POST(req: NextRequest) {
       }
 
       const upper = query.trim().toUpperCase();
-      if (upper === 'CLEAR ALL DATA' || upper === 'TRUNCATE ALL' || upper.startsWith('CLEAR DATABASE')) {
+      if (
+        upper === 'CLEAR ALL DATA' ||
+        upper === 'CLEAR ALL' ||
+        upper === 'CLEAR' ||
+        upper === 'TRUNCATE ALL' ||
+        upper.startsWith('CLEAR DATABASE')
+      ) {
         const gate = requireAdmin(key);
         if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: 403 });
         const result = await clearAllData();

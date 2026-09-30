@@ -932,11 +932,13 @@ export function clearAllData(): { cleared: string[]; timestamp: string } {
       'roster',
       'tasks',
       'floor_log',
+      'floor_entry_codes',
       'engineering_notes',
       'outreach_demos',
       'machine_reservations',
       'hour_appeals',
       'certifications',
+      'member_accounts',
     ],
     timestamp: new Date().toISOString(),
   };
@@ -1077,6 +1079,29 @@ export function getTableStats() {
         { name: 'status', type: 'TEXT' },
       ],
     },
+    {
+      name: 'collection_items',
+      rowCount: count('collection_items'),
+      description:
+        'Team Central collections (roster, tasks, floor_log, floor_entry_codes, notes, demos, …)',
+      columns: [
+        { name: 'collection', type: 'TEXT', isPrimary: true },
+        { name: 'id', type: 'TEXT', isPrimary: true },
+        { name: 'data', type: 'TEXT' },
+      ],
+    },
+    {
+      name: 'member_accounts',
+      rowCount: count('member_accounts'),
+      description: 'Member name/password accounts (passwords never returned)',
+      columns: [
+        { name: 'id', type: 'TEXT', isPrimary: true },
+        { name: 'name', type: 'TEXT' },
+        { name: 'name_key', type: 'TEXT' },
+        { name: 'created_at', type: 'TEXT' },
+        { name: 'last_login_at', type: 'TEXT' },
+      ],
+    },
   ];
 }
 
@@ -1101,6 +1126,47 @@ export function executeSql(sql: string): {
       .filter(Boolean);
 
     const primary = statements[0] || clean;
+    const primaryUpper = primary.toUpperCase().replace(/;+\s*$/, '').trim();
+
+    // Admin console clear / reset shortcuts
+    if (
+      primaryUpper === 'CLEAR ALL DATA' ||
+      primaryUpper === 'CLEAR ALL' ||
+      primaryUpper === 'CLEAR' ||
+      primaryUpper === 'TRUNCATE ALL' ||
+      primaryUpper.startsWith('CLEAR DATABASE')
+    ) {
+      const result = clearAllData();
+      return {
+        columns: ['status', 'tables_cleared', 'timestamp'],
+        rows: [
+          {
+            status: 'CLEARED',
+            tables_cleared: result.cleared.join(', '),
+            timestamp: result.timestamp,
+          },
+        ],
+        rowCount: 1,
+        executionTimeMs: Math.round((performance.now() - start) * 100) / 100,
+        rawSql: clean,
+      };
+    }
+    if (primaryUpper === 'RESET DEFAULTS' || primaryUpper === 'SEED DEFAULTS') {
+      const result = resetToDefaults();
+      return {
+        columns: ['status', 'message', 'timestamp'],
+        rows: [
+          {
+            status: 'RESET',
+            message: result.message,
+            timestamp: result.timestamp,
+          },
+        ],
+        rowCount: 1,
+        executionTimeMs: Math.round((performance.now() - start) * 100) / 100,
+        rawSql: clean,
+      };
+    }
 
     if (/^(SELECT|PRAGMA|SHOW|DESCRIBE|EXPLAIN)/i.test(primary)) {
       const stmt = db.prepare(primary.replace(/^SHOW\s+TABLES/i, "SELECT name AS table_name FROM sqlite_master WHERE type='table' ORDER BY name").replace(/^DESCRIBE\s+(\w+)/i, 'PRAGMA table_info($1)'));
