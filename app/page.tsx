@@ -111,6 +111,14 @@ function DashboardContent() {
   const [pitData, setPitData] = useState<PitScoutingData[]>([]);
   const [picklist, setPicklist] = useState<PicklistTeam[]>([]);
   const [selectedTeamNumber, setSelectedTeamNumber] = useState<number>(254);
+
+  // Keep selection valid when dataset is cleared or team deleted
+  useEffect(() => {
+    if (teams.length === 0) return;
+    if (!teams.some((t) => t.number === selectedTeamNumber)) {
+      setSelectedTeamNumber(teams[0].number);
+    }
+  }, [teams, selectedTeamNumber]);
   const [prefilledMatch, setPrefilledMatch] = useState<number>(44);
   const [prefilledTeam, setPrefilledTeam] = useState<number>(254);
   const [prefilledAlliance, setPrefilledAlliance] = useState<'Red' | 'Blue'>('Red');

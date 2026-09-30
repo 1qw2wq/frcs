@@ -215,7 +215,7 @@ export const MatchScoutingForm: React.FC<MatchScoutingFormProps> = ({
                 />
               ) : (
                 <select
-                  value={teams.some((t) => t.number === teamNumber) ? teamNumber : teams[0].number}
+                  value={teams.some((t) => t.number === teamNumber) ? teamNumber : (teams[0]?.number ?? '')}
                   onChange={(e) => setTeamNumber(Number(e.target.value))}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-blue-500"
                 >

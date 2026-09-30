@@ -33,29 +33,31 @@ export const TeamAnalytics: React.FC<TeamAnalyticsProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
-  const currentTeam = teams.find((t) => t.number === selectedTeamNumber) || teams[0];
-  const teamScouting = scoutingEntries.filter((s) => s.teamNumber === currentTeam.number);
+  const currentTeam = teams.find((t) => t.number === selectedTeamNumber) || teams[0] || null;
+  const teamScouting = currentTeam
+    ? scoutingEntries.filter((s) => s.teamNumber === currentTeam.number)
+    : [];
 
-  // Calculate statistics from scout entries
+  // Calculate statistics from scout entries (0 when empty — no fake defaults)
   const totalScouted = teamScouting.length;
   const avgCycles =
     totalScouted > 0
       ? Math.round((teamScouting.reduce((acc, s) => acc + s.cycles, 0) / totalScouted) * 10) / 10
-      : 10.5;
+      : 0;
 
   const deepClimbCount = teamScouting.filter((s) => s.climbStatus === 'Deep Cage').length;
-  const climbSuccessRate = totalScouted > 0 ? Math.round((deepClimbCount / totalScouted) * 100) : 92;
+  const climbSuccessRate = totalScouted > 0 ? Math.round((deepClimbCount / totalScouted) * 100) : 0;
 
   const avgDriverSkill =
     totalScouted > 0
       ? Math.round((teamScouting.reduce((acc, s) => acc + s.driverSkill, 0) / totalScouted) * 10) / 10
-      : 4.8;
+      : 0;
 
   // Filtered teams list for search
   const filteredTeams = teams.filter(
     (t) =>
       t.number.toString().includes(searchQuery) ||
-      t.name.toLowerCase().includes(searchQuery.toLowerCase())
+      (t.name || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -82,22 +84,42 @@ export const TeamAnalytics: React.FC<TeamAnalyticsProps> = ({
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search team # or name..."
               className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 font-mono"
+              disabled={teams.length === 0}
             />
           </div>
 
           <select
-            value={currentTeam.number}
+            value={currentTeam?.number ?? ''}
             onChange={(e) => onSelectTeamNumber(Number(e.target.value))}
-            className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-cyan-300 font-mono focus:outline-none focus:border-blue-500"
+            className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-cyan-300 font-mono focus:outline-none focus:border-blue-500 disabled:opacity-50"
+            disabled={teams.length === 0}
           >
-            {filteredTeams.map((t) => (
-              <option key={t.number} value={t.number}>
-                #{t.number} - {t.name}
-              </option>
-            ))}
+            {teams.length === 0 ? (
+              <option value="">No teams</option>
+            ) : (
+              filteredTeams.map((t) => (
+                <option key={t.number} value={t.number}>
+                  #{t.number} - {t.name}
+                </option>
+              ))
+            )}
           </select>
         </div>
       </div>
+
+      {teams.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/60 p-12 text-center">
+          <BarChart3 className="mx-auto mb-3 h-10 w-10 text-slate-600" />
+          <p className="text-sm font-semibold text-slate-200">No teams in the database</p>
+          <p className="mt-2 text-xs text-slate-500 font-mono max-w-md mx-auto leading-relaxed">
+            Data was cleared. Add teams under Match Scouting → Teams, or open SQL Server → Danger →
+            Restore seed data.
+          </p>
+        </div>
+      )}
+
+      {currentTeam && (
+        <>
 
       {/* Team Profile Banner */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 relative overflow-hidden shadow-xl">
@@ -105,9 +127,9 @@ export const TeamAnalytics: React.FC<TeamAnalyticsProps> = ({
           <div className="flex items-center gap-5">
             <div className="h-20 w-20 rounded-2xl overflow-hidden border-2 border-blue-500/40 bg-slate-950 shadow-xl flex-shrink-0">
               <img
-                src={currentTeam.imageUrl}
-                alt={currentTeam.name}
-                className="h-full w-full object-cover"
+                src={currentTeam.imageUrl || ''}
+                alt={currentTeam.name || 'Team'}
+                className="h-full w-full object-cover bg-slate-950"
               />
             </div>
             <div>
@@ -123,7 +145,8 @@ export const TeamAnalytics: React.FC<TeamAnalyticsProps> = ({
               </p>
               <div className="flex items-center gap-3 mt-2 text-xs font-mono">
                 <span className="text-emerald-400 font-semibold">
-                  Record: {currentTeam.record.wins}W - {currentTeam.record.losses}L - {currentTeam.record.ties}T
+                  Record: {currentTeam.record?.wins ?? 0}W - {currentTeam.record?.losses ?? 0}L -{' '}
+                  {currentTeam.record?.ties ?? 0}T
                 </span>
                 <span className="text-slate-600">|</span>
                 <span className="text-slate-300">Chassis: {currentTeam.drivetrain}</span>
@@ -283,6 +306,8 @@ export const TeamAnalytics: React.FC<TeamAnalyticsProps> = ({
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 };

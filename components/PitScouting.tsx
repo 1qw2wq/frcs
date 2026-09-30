@@ -35,37 +35,46 @@ export const PitScouting: React.FC<PitScoutingProps> = ({
 }) => {
   const { isAdmin } = useAuthKey();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTeamNum, setSelectedTeamNum] = useState<number | null>(teams[0]?.number || 254);
+  const [selectedTeamNum, setSelectedTeamNum] = useState<number | null>(teams[0]?.number ?? null);
   const [isEditing, setIsEditing] = useState(false);
 
   // Filtered teams list
   const filteredTeams = teams.filter(
     (t) =>
       t.number.toString().includes(searchTerm) ||
-      t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.location.toLowerCase().includes(searchTerm.toLowerCase())
+      (t.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (t.location || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const selectedTeam = teams.find((t) => t.number === selectedTeamNum) || teams[0];
-  const selectedPit = pitData.find((p) => p.teamNumber === selectedTeamNum) || {
-    teamNumber: selectedTeam?.number || 254,
+  const selectedTeam = teams.find((t) => t.number === selectedTeamNum) || teams[0] || null;
+  const blankPit = (teamNumber = 0): PitScoutingData => ({
+    teamNumber,
     scoutName: 'Pit Inspector',
-    drivetrain: selectedTeam?.drivetrain || 'Swerve SDS Mk4i',
-    dimensions: '28 x 28 x 38 in',
-    weightLbs: 120.0,
-    motorsDrive: '4x Kraken X60',
-    motorsSteer: '4x Falcon 500',
-    intakeType: 'Under-bumper active motorized intake roller',
-    scoringCapabilities: ['L1 Coral', 'L2 Coral', 'L3 Coral', 'L4 Coral', 'Algae Processor'],
-    visionSystem: 'Dual Limelight 3G (AprilTags Megatag2)',
-    preferredAutonomous: '4-piece autonomous coral routine',
-    climbCapability: 'Deep Cage latch',
-    photoUrl: selectedTeam?.imageUrl || 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=800&q=80',
-    pitNotes: 'Pit wiring clean and inspected. Pneumatics holding pressure.',
-    inspectionPassed: true,
-    batteryVoltage: 12.8,
-    lastChecked: '2026-09-23 14:00',
-  };
+    drivetrain: '',
+    dimensions: '',
+    weightLbs: 0,
+    motorsDrive: '',
+    motorsSteer: '',
+    intakeType: '',
+    scoringCapabilities: [],
+    visionSystem: '',
+    preferredAutonomous: '',
+    climbCapability: '',
+    photoUrl: '',
+    pitNotes: '',
+    inspectionPassed: false,
+    batteryVoltage: 0,
+    lastChecked: '',
+  });
+  const selectedPit =
+    pitData.find((p) => p.teamNumber === selectedTeamNum) ||
+    (selectedTeam
+      ? {
+          ...blankPit(selectedTeam?.number),
+          drivetrain: selectedTeam?.drivetrain || '',
+          photoUrl: selectedTeam?.imageUrl || '',
+        }
+      : blankPit(0));
 
   const [formState, setFormState] = useState<PitScoutingData>(selectedPit);
 
@@ -147,6 +156,15 @@ export const PitScouting: React.FC<PitScoutingProps> = ({
             Registered Teams ({filteredTeams.length})
           </div>
 
+          {filteredTeams.length === 0 && (
+            <div className="p-6 text-center rounded-xl border border-dashed border-slate-700 bg-slate-950/50">
+              <p className="text-xs font-semibold text-slate-300">No teams loaded</p>
+              <p className="mt-1 text-[11px] text-slate-500 font-mono leading-relaxed">
+                Database is empty. Add teams in Match Scouting, or restore seed data in SQL Server.
+              </p>
+            </div>
+          )}
+
           {filteredTeams.map((team) => {
             const isSelected = team.number === selectedTeamNum;
             const pit = pitData.find((p) => p.teamNumber === team.number);
@@ -204,12 +222,20 @@ export const PitScouting: React.FC<PitScoutingProps> = ({
 
         {/* Selected Team Pit Details */}
         <div className="lg:col-span-8 space-y-6">
-          {isEditing ? (
+          {!selectedTeam ? (
+            <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/50 p-12 text-center">
+              <Wrench className="mx-auto mb-3 h-10 w-10 text-slate-600" />
+              <p className="text-sm font-semibold text-slate-200">No team selected</p>
+              <p className="mt-2 text-xs text-slate-500 font-mono max-w-sm mx-auto">
+                Clear left the roster empty. Add a team first, then inspect pit specs here.
+              </p>
+            </div>
+          ) : isEditing ? (
             /* EDIT FORM */
             <form onSubmit={handleSave} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                 <h3 className="text-base font-bold text-white font-mono">
-                  Editing Pit Specs for Team #{selectedTeam.number} ({selectedTeam.name})
+                  Editing Pit Specs for Team #{selectedTeam?.number} ({selectedTeam?.name})
                 </h3>
                 <span className="text-xs text-slate-400 font-mono">Will commit to SQL server</span>
               </div>
@@ -350,7 +376,7 @@ export const PitScouting: React.FC<PitScoutingProps> = ({
               <div className="relative h-64 w-full bg-slate-950 overflow-hidden border-b border-slate-800">
                 <img
                   src={formState.photoUrl}
-                  alt={`Team ${selectedTeam.number} Robot`}
+                  alt={`Team ${selectedTeam?.number} Robot`}
                   className="w-full h-full object-cover object-center opacity-85 hover:scale-105 transition duration-700"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
@@ -358,18 +384,18 @@ export const PitScouting: React.FC<PitScoutingProps> = ({
                 <div className="absolute bottom-4 left-6 right-6 flex items-end justify-between">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-3xl font-black font-mono text-white">#{selectedTeam.number}</span>
-                      <span className="text-xl font-bold text-cyan-300">{selectedTeam.name}</span>
+                      <span className="text-3xl font-black font-mono text-white">#{selectedTeam?.number}</span>
+                      <span className="text-xl font-bold text-cyan-300">{selectedTeam?.name}</span>
                     </div>
                     <p className="text-xs text-slate-300 font-mono mt-0.5">
-                      {selectedTeam.organization} • {selectedTeam.location}
+                      {selectedTeam?.organization} • {selectedTeam?.location}
                     </p>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {selectedTeam.cadUrl && (
+                    {selectedTeam?.cadUrl && (
                       <a
-                        href={selectedTeam.cadUrl}
+                        href={selectedTeam?.cadUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-cyan-300 text-xs font-mono border border-cyan-500/30 backdrop-blur-sm transition"
@@ -379,7 +405,7 @@ export const PitScouting: React.FC<PitScoutingProps> = ({
                       </a>
                     )}
                     <button
-                      onClick={() => onSelectTeam(selectedTeam.number)}
+                      onClick={() => selectedTeam && onSelectTeam(selectedTeam.number)}
                       className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition"
                     >
                       View Deep Analytics &rarr;

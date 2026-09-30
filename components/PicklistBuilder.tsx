@@ -36,9 +36,9 @@ export const PicklistBuilder: React.FC<PicklistBuilderProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Alliance Simulator state
-  const [simRobot1, setSimRobot1] = useState<number>(254);
-  const [simRobot2, setSimRobot2] = useState<number>(1678);
-  const [simRobot3, setSimRobot3] = useState<number>(2910);
+  const [simRobot1, setSimRobot1] = useState<number>(teams[0]?.number ?? 0);
+  const [simRobot2, setSimRobot2] = useState<number>(teams[1]?.number ?? teams[0]?.number ?? 0);
+  const [simRobot3, setSimRobot3] = useState<number>(teams[2]?.number ?? teams[0]?.number ?? 0);
 
   const getTeam = (num: number) => teams.find((t) => t.number === num);
 
@@ -128,6 +128,16 @@ export const PicklistBuilder: React.FC<PicklistBuilderProps> = ({
         </div>
       </div>
 
+      {teams.length === 0 && list.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/50 p-8 text-center">
+          <Sparkles className="mx-auto mb-3 h-8 w-8 text-slate-600" />
+          <p className="text-sm font-semibold text-slate-200">Picklist is empty</p>
+          <p className="mt-1 text-xs text-slate-500 font-mono">
+            No teams or draft rows after clear. Restore seed data or add teams first.
+          </p>
+        </div>
+      )}
+
       {saveSuccess && (
         <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 rounded-xl text-xs font-mono">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -157,11 +167,15 @@ export const PicklistBuilder: React.FC<PicklistBuilderProps> = ({
               onChange={(e) => setSimRobot1(Number(e.target.value))}
               className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-blue-500"
             >
-              {teams.map((t) => (
-                <option key={t.number} value={t.number}>
-                  #{t.number} - {t.name} (EPA: {t.epa})
-                </option>
-              ))}
+              {teams.length === 0 ? (
+                <option value={0}>No teams</option>
+              ) : (
+                teams.map((t) => (
+                  <option key={t.number} value={t.number}>
+                    #{t.number} - {t.name} (EPA: {t.epa})
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
@@ -172,11 +186,23 @@ export const PicklistBuilder: React.FC<PicklistBuilderProps> = ({
               onChange={(e) => setSimRobot2(Number(e.target.value))}
               className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-blue-500"
             >
-              {teams.map((t) => (
-                <option key={t.number} value={t.number}>
-                  #{t.number} - {t.name} (EPA: {t.epa})
-                </option>
-              ))}
+              {teams.length === 0 ? (
+
+                <option value={0}>No teams</option>
+
+              ) : (
+
+                teams.map((t) => (
+
+                  <option key={t.number} value={t.number}>
+
+                    #{t.number} - {t.name} (EPA: {t.epa})
+
+                  </option>
+
+                ))
+
+              )}
             </select>
           </div>
 
@@ -187,11 +213,23 @@ export const PicklistBuilder: React.FC<PicklistBuilderProps> = ({
               onChange={(e) => setSimRobot3(Number(e.target.value))}
               className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-blue-500"
             >
-              {teams.map((t) => (
-                <option key={t.number} value={t.number}>
-                  #{t.number} - {t.name} (EPA: {t.epa})
-                </option>
-              ))}
+              {teams.length === 0 ? (
+
+                <option value={0}>No teams</option>
+
+              ) : (
+
+                teams.map((t) => (
+
+                  <option key={t.number} value={t.number}>
+
+                    #{t.number} - {t.name} (EPA: {t.epa})
+
+                  </option>
+
+                ))
+
+              )}
             </select>
           </div>
         </div>

@@ -139,7 +139,7 @@ export const MatchCenter: React.FC<MatchCenterProps> = ({
                   </div>
 
                   <div className="grid grid-cols-3 gap-2">
-                    {match.redAlliance.teams.map((tNum) => {
+                    {(match.redAlliance?.teams || []).map((tNum) => {
                       const t = getTeamObj(tNum);
                       return (
                         <div
@@ -208,7 +208,7 @@ export const MatchCenter: React.FC<MatchCenterProps> = ({
                   </div>
 
                   <div className="grid grid-cols-3 gap-2">
-                    {match.blueAlliance.teams.map((tNum) => {
+                    {(match.blueAlliance?.teams || []).map((tNum) => {
                       const t = getTeamObj(tNum);
                       return (
                         <div
