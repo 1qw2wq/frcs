@@ -546,9 +546,8 @@ export function AuthKeyProvider({ children }: { children: React.ReactNode }) {
         updateKeys,
         setSqlConnectionKey,
         openAuthModal: () => setIsAuthModalOpen(true),
-        closeAuthModal: () => {
-          if (role === 'admin' || role === 'member') setIsAuthModalOpen(false);
-        },
+        // Always allow dismiss — returns to landing when logged out
+        closeAuthModal: () => setIsAuthModalOpen(false),
         openKeyManagement: () => setIsKeyManagementOpen(true),
         closeKeyManagement: () => setIsKeyManagementOpen(false),
         hasPermission,

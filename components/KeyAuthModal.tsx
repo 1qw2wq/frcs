@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuthKey } from '@/context/AuthKeyContext';
 import {
   ShieldAlert,
@@ -36,6 +36,19 @@ export const KeyAuthModal: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(
     null
   );
+
+  // Escape always dismisses (back to landing when logged out)
+  useEffect(() => {
+    if (!isAuthModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isSubmitting) {
+        e.preventDefault();
+        closeAuthModal();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isAuthModalOpen, isSubmitting, closeAuthModal]);
 
   // Admin token
   const [adminKey, setAdminKey] = useState('');
@@ -144,59 +157,77 @@ export const KeyAuthModal: React.FC = () => {
     { id: 'admin', label: 'Admin', icon: <ShieldAlert className="w-3.5 h-3.5" /> },
   ];
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden p-6">
-        {isAuthenticated && (
-          <button
-            onClick={closeAuthModal}
-            className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
-            type="button"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
+  const handleDismiss = () => {
+    if (isSubmitting) return;
+    setStatusMessage(null);
+    closeAuthModal();
+  };
 
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400">
-            <Lock className="w-6 h-6" />
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-[#0a0a0b]/80 backdrop-blur-md"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="auth-modal-title"
+      onMouseDown={(e) => {
+        // Click outside the card closes
+        if (e.target === e.currentTarget) handleDismiss();
+      }}
+    >
+      <div className="relative w-full max-w-md border border-[#f4f0ea]/10 bg-[#12141a] shadow-2xl overflow-hidden p-6 sm:p-7">
+        {/* Always-visible close — works on landing before sign-in */}
+        <button
+          onClick={handleDismiss}
+          className="absolute top-3.5 right-3.5 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-[#f4f0ea]/12 bg-[#0a0a0b]/60 text-[#f4f0ea]/55 transition hover:border-[#f4f0ea]/25 hover:bg-[#f4f0ea]/10 hover:text-[#f4f0ea]"
+          type="button"
+          aria-label="Close sign in"
+          title="Close (Esc)"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        <div className="flex items-center gap-3 mb-5 pr-10">
+          <div className="flex h-11 w-11 items-center justify-center bg-[#c45c26]/15 text-[#e8a87c]">
+            <Lock className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white">FRC Security Access</h2>
-            <p className="text-xs text-slate-400">
-              Members: name + password · Admin: access token
+            <h2 id="auth-modal-title" className="font-display text-xl font-medium tracking-tight text-[#f4f0ea]">
+              Sign in
+            </h2>
+            <p className="text-[12px] text-[#f4f0ea]/45">
+              Members · name &amp; password · Admin · access token
             </p>
           </div>
         </div>
 
         <div
-          className={`mb-4 flex items-start gap-2 rounded-xl border px-3 py-2.5 text-[11px] font-mono ${
+          className={`mb-4 flex items-start gap-2 border px-3 py-2.5 text-[11px] font-landing-mono ${
             keysFromEnv
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+              ? 'border-emerald-500/25 bg-emerald-500/8 text-emerald-200/90'
               : 'border-rose-500/30 bg-rose-950/40 text-rose-200'
           }`}
         >
-          <Server className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <Server className="w-3.5 h-3.5 mt-0.5 shrink-0 opacity-80" />
           <div className="leading-relaxed">
             {keysFromEnv ? (
               <>
-                Access tokens from environment · admin:{' '}
-                <span className="text-emerald-300">{envSource.admin}</span> · member:{' '}
-                <span className="text-emerald-300">{envSource.member}</span>. Members need the member
-                token <span className="text-cyan-300">only once</span> at registration.
+                Tokens from env · admin{' '}
+                <span className="text-emerald-300">{envSource.admin}</span> · member{' '}
+                <span className="text-emerald-300">{envSource.member}</span>. Member token only at
+                first setup.
               </>
             ) : (
               <>
-                No keys in environment. Set <span className="text-amber-200">FRC_ADMIN_KEY</span> and{' '}
-                <span className="text-amber-200">FRC_MEMBER_KEY</span> in <span className="text-cyan-200">.env</span>{' '}
-                / hosting secrets, then restart. There are no built-in demo defaults.
+                Set <span className="text-amber-200">FRC_ADMIN_KEY</span> and{' '}
+                <span className="text-amber-200">FRC_MEMBER_KEY</span> in env, then restart. No built-in
+                defaults.
               </>
             )}
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="mb-4 grid grid-cols-3 gap-1 rounded-xl bg-slate-950 p-1 border border-slate-800">
+        <div className="mb-5 grid grid-cols-3 gap-px bg-[#f4f0ea]/10 p-px">
           {tabs.map((t) => (
             <button
               key={t.id}
@@ -205,16 +236,16 @@ export const KeyAuthModal: React.FC = () => {
                 setTab(t.id);
                 setStatusMessage(null);
               }}
-              className={`flex items-center justify-center gap-1 px-2 py-2 rounded-lg text-[11px] font-semibold transition ${
+              className={`flex items-center justify-center gap-1.5 px-2 py-2.5 text-[11px] font-medium tracking-wide transition ${
                 tab === t.id
                   ? t.id === 'admin'
-                    ? 'bg-amber-600/90 text-white shadow'
-                    : 'bg-cyan-600/90 text-white shadow'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                    ? 'bg-[#c45c26] text-[#f4f0ea]'
+                    : 'bg-[#f4f0ea] text-[#0a0a0b]'
+                  : 'bg-[#0a0a0b]/50 text-[#f4f0ea]/45 hover:bg-[#f4f0ea]/5 hover:text-[#f4f0ea]/80'
               }`}
             >
               {t.icon}
-              <span className="hidden xs:inline sm:inline">{t.label}</span>
+              <span className="hidden sm:inline">{t.label}</span>
             </button>
           ))}
         </div>
@@ -222,21 +253,22 @@ export const KeyAuthModal: React.FC = () => {
         {/* MEMBER LOGIN — name + password only */}
         {tab === 'member-login' && (
           <form onSubmit={handleMemberLogin} className="space-y-3.5">
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Returning members sign in with the <span className="text-cyan-300 font-semibold">name</span> and{' '}
-              <span className="text-cyan-300 font-semibold">password</span> they set at first setup. No token
-              needed after registration.
+            <p className="text-[13px] leading-relaxed text-[#f4f0ea]/55">
+              Returning members use the <span className="text-[#e8a87c]">name</span> and{' '}
+              <span className="text-[#e8a87c]">password</span> from first setup. No token after that.
             </p>
             <div>
-              <label className="block text-xs font-mono font-medium text-slate-300 mb-1.5">YOUR NAME</label>
+              <label className="mb-1.5 block font-landing-mono text-[10px] font-medium tracking-[0.18em] text-[#f4f0ea]/45 uppercase">
+                Your name
+              </label>
               <div className="relative">
-                <Users className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Users className="w-4 h-4 text-[#f4f0ea]/35 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={loginName}
                   onChange={(e) => setLoginName(e.target.value)}
                   placeholder="e.g. Maya Patel"
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition"
+                  className="w-full border border-[#f4f0ea]/12 bg-[#0a0a0b] py-2.5 pl-10 pr-4 text-sm text-[#f4f0ea] placeholder:text-[#f4f0ea]/25 focus:border-[#e8a87c]/50 focus:outline-none"
                   autoFocus
                   autoComplete="username"
                   disabled={isSubmitting}
@@ -245,15 +277,17 @@ export const KeyAuthModal: React.FC = () => {
               </div>
             </div>
             <div>
-              <label className="block text-xs font-mono font-medium text-slate-300 mb-1.5">PASSWORD</label>
+              <label className="mb-1.5 block font-landing-mono text-[10px] font-medium tracking-[0.18em] text-[#f4f0ea]/45 uppercase">
+                Password
+              </label>
               <div className="relative">
-                <KeyRound className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <KeyRound className="w-4 h-4 text-[#f4f0ea]/35 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="password"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   placeholder="Your personal password"
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition"
+                  className="w-full border border-[#f4f0ea]/12 bg-[#0a0a0b] py-2.5 pl-10 pr-4 font-landing-mono text-sm text-[#f4f0ea] placeholder:text-[#f4f0ea]/25 focus:border-[#e8a87c]/50 focus:outline-none"
                   autoComplete="current-password"
                   disabled={isSubmitting}
                   required
@@ -266,7 +300,7 @@ export const KeyAuthModal: React.FC = () => {
             <button
               type="submit"
               disabled={isSubmitting || !loginName.trim() || !loginPassword}
-              className="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-cyan-500/25 transition disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex w-full items-center justify-center gap-2 bg-[#f4f0ea] py-3 text-[13px] font-semibold tracking-wide text-[#0a0a0b] transition hover:bg-[#e8a87c] disabled:opacity-50"
             >
               {isSubmitting ? (
                 <>
@@ -274,35 +308,44 @@ export const KeyAuthModal: React.FC = () => {
                   Signing in…
                 </>
               ) : (
-                'Sign in as Member'
+                'Sign in as member'
               )}
             </button>
             <button
               type="button"
               onClick={() => setTab('member-register')}
-              className="w-full text-[11px] font-mono text-slate-400 hover:text-cyan-300 transition"
+              className="w-full font-landing-mono text-[11px] text-[#f4f0ea]/40 transition hover:text-[#e8a87c]"
             >
-              First time here? Create your account →
+              First time? Create your account →
+            </button>
+            <button
+              type="button"
+              onClick={handleDismiss}
+              className="w-full pt-1 text-[12px] text-[#f4f0ea]/35 transition hover:text-[#f4f0ea]/70"
+            >
+              Cancel · back to landing
             </button>
           </form>
         )}
 
-        {/* MEMBER REGISTER — name + password + member token once */}
+        {/* MEMBER REGISTER */}
         {tab === 'member-register' && (
           <form onSubmit={handleMemberRegister} className="space-y-3.5">
-            <p className="text-xs text-slate-300 leading-relaxed">
-              First-time setup: choose a name and password, and enter the shared{' '}
-              <span className="text-cyan-300 font-semibold">member access token</span> (same token model as
-              admin). After this, you only use name + password.
+            <p className="text-[13px] leading-relaxed text-[#f4f0ea]/55">
+              First setup: name, password, and the shared{' '}
+              <span className="text-[#e8a87c]">member token</span> once. Later logins are name + password
+              only.
             </p>
             <div>
-              <label className="block text-xs font-mono font-medium text-slate-300 mb-1.5">YOUR NAME</label>
+              <label className="mb-1.5 block font-landing-mono text-[10px] font-medium tracking-[0.18em] text-[#f4f0ea]/45 uppercase">
+                Your name
+              </label>
               <input
                 type="text"
                 value={regName}
                 onChange={(e) => setRegName(e.target.value)}
                 placeholder="Full name (how teammates see you)"
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 transition"
+                className="w-full border border-[#f4f0ea]/12 bg-[#0a0a0b] px-3.5 py-2.5 text-sm text-[#f4f0ea] placeholder:text-[#f4f0ea]/25 focus:border-[#e8a87c]/50 focus:outline-none"
                 autoFocus
                 autoComplete="name"
                 disabled={isSubmitting}
@@ -312,13 +355,15 @@ export const KeyAuthModal: React.FC = () => {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-mono font-medium text-slate-300 mb-1.5">PASSWORD</label>
+                <label className="mb-1.5 block font-landing-mono text-[10px] font-medium tracking-[0.18em] text-[#f4f0ea]/45 uppercase">
+                  Password
+                </label>
                 <input
                   type="password"
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
                   placeholder="Min 4 chars"
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 transition"
+                  className="w-full border border-[#f4f0ea]/12 bg-[#0a0a0b] px-3.5 py-2.5 font-landing-mono text-sm text-[#f4f0ea] placeholder:text-[#f4f0ea]/25 focus:border-[#e8a87c]/50 focus:outline-none"
                   autoComplete="new-password"
                   disabled={isSubmitting}
                   required
@@ -326,13 +371,15 @@ export const KeyAuthModal: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono font-medium text-slate-300 mb-1.5">CONFIRM</label>
+                <label className="mb-1.5 block font-landing-mono text-[10px] font-medium tracking-[0.18em] text-[#f4f0ea]/45 uppercase">
+                  Confirm
+                </label>
                 <input
                   type="password"
                   value={regPassword2}
                   onChange={(e) => setRegPassword2(e.target.value)}
                   placeholder="Repeat"
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 transition"
+                  className="w-full border border-[#f4f0ea]/12 bg-[#0a0a0b] px-3.5 py-2.5 font-landing-mono text-sm text-[#f4f0ea] placeholder:text-[#f4f0ea]/25 focus:border-[#e8a87c]/50 focus:outline-none"
                   autoComplete="new-password"
                   disabled={isSubmitting}
                   required
@@ -341,17 +388,17 @@ export const KeyAuthModal: React.FC = () => {
               </div>
             </div>
             <div>
-              <label className="block text-xs font-mono font-medium text-slate-300 mb-1.5">
-                MEMBER ACCESS TOKEN <span className="text-amber-400/90">(required once)</span>
+              <label className="mb-1.5 block font-landing-mono text-[10px] font-medium tracking-[0.18em] text-[#f4f0ea]/45 uppercase">
+                Member token <span className="text-[#e8a87c]">(once)</span>
               </label>
               <div className="relative">
-                <KeyRound className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <KeyRound className="w-4 h-4 text-[#f4f0ea]/35 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="password"
                   value={regToken}
                   onChange={(e) => setRegToken(e.target.value)}
-                  placeholder="Paste FRC_MEMBER_KEY from your coach/admin"
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 transition"
+                  placeholder="Paste FRC_MEMBER_KEY from admin"
+                  className="w-full border border-[#f4f0ea]/12 bg-[#0a0a0b] py-2.5 pl-10 pr-4 font-landing-mono text-sm text-[#f4f0ea] placeholder:text-[#f4f0ea]/25 focus:border-[#e8a87c]/50 focus:outline-none"
                   autoComplete="off"
                   disabled={isSubmitting}
                   required
@@ -361,7 +408,7 @@ export const KeyAuthModal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setRegToken(keys.memberKey)}
-                  className="mt-1.5 text-[10px] font-mono text-cyan-400 hover:text-cyan-300"
+                  className="mt-1.5 font-landing-mono text-[10px] text-[#7eb8c9] hover:text-[#f4f0ea]"
                 >
                   Fill from NEXT_PUBLIC_FRC_MEMBER_KEY
                 </button>
@@ -375,7 +422,7 @@ export const KeyAuthModal: React.FC = () => {
               disabled={
                 isSubmitting || !regName.trim() || !regPassword || !regPassword2 || !regToken.trim()
               }
-              className="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-cyan-500/25 transition disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex w-full items-center justify-center gap-2 bg-[#f4f0ea] py-3 text-[13px] font-semibold tracking-wide text-[#0a0a0b] transition hover:bg-[#e8a87c] disabled:opacity-50"
             >
               {isSubmitting ? (
                 <>
@@ -383,40 +430,45 @@ export const KeyAuthModal: React.FC = () => {
                   Creating account…
                 </>
               ) : (
-                'Register & Enter'
+                'Register & enter'
               )}
             </button>
             <button
               type="button"
               onClick={() => setTab('member-login')}
-              className="w-full text-[11px] font-mono text-slate-400 hover:text-cyan-300 transition"
+              className="w-full font-landing-mono text-[11px] text-[#f4f0ea]/40 transition hover:text-[#e8a87c]"
             >
               Already registered? Sign in →
+            </button>
+            <button
+              type="button"
+              onClick={handleDismiss}
+              className="w-full pt-1 text-[12px] text-[#f4f0ea]/35 transition hover:text-[#f4f0ea]/70"
+            >
+              Cancel · back to landing
             </button>
           </form>
         )}
 
-        {/* ADMIN — access token only (same token model) */}
+        {/* ADMIN */}
         {tab === 'admin' && (
           <form onSubmit={handleAdminSubmit} className="space-y-3.5">
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Administrators authenticate with the shared{' '}
-              <span className="text-amber-400 font-semibold">admin access token</span> (
-              <span className="font-mono text-slate-400">FRC_ADMIN_KEY</span>). Members use the parallel
-              member token only during first setup.
+            <p className="text-[13px] leading-relaxed text-[#f4f0ea]/55">
+              Admins use the shared <span className="text-[#e8a87c]">admin access token</span> from{' '}
+              <span className="font-landing-mono text-[#f4f0ea]/40">FRC_ADMIN_KEY</span>.
             </p>
             <div>
-              <label className="block text-xs font-mono font-medium text-slate-300 mb-1.5">
-                ADMIN ACCESS KEY TOKEN
+              <label className="mb-1.5 block font-landing-mono text-[10px] font-medium tracking-[0.18em] text-[#f4f0ea]/45 uppercase">
+                Admin access token
               </label>
               <div className="relative">
-                <KeyRound className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <KeyRound className="w-4 h-4 text-[#f4f0ea]/35 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="password"
                   value={adminKey}
                   onChange={(e) => setAdminKey(e.target.value)}
                   placeholder="Paste administrator key"
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition"
+                  className="w-full border border-[#f4f0ea]/12 bg-[#0a0a0b] py-2.5 pl-10 pr-4 font-landing-mono text-sm text-[#f4f0ea] placeholder:text-[#f4f0ea]/25 focus:border-[#c45c26]/60 focus:outline-none"
                   autoFocus
                   autoComplete="current-password"
                   disabled={isSubmitting}
@@ -429,7 +481,7 @@ export const KeyAuthModal: React.FC = () => {
             <button
               type="submit"
               disabled={isSubmitting || !adminKey.trim()}
-              className="w-full py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-amber-500/25 transition disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex w-full items-center justify-center gap-2 bg-[#c45c26] py-3 text-[13px] font-semibold tracking-wide text-[#f4f0ea] transition hover:bg-[#e07a3d] disabled:opacity-50"
             >
               {isSubmitting ? (
                 <>
@@ -437,7 +489,7 @@ export const KeyAuthModal: React.FC = () => {
                   Authenticating…
                 </>
               ) : (
-                'Authenticate as Admin'
+                'Continue as admin'
               )}
             </button>
 
@@ -446,17 +498,24 @@ export const KeyAuthModal: React.FC = () => {
                 type="button"
                 disabled={isSubmitting}
                 onClick={handleQuickAdmin}
-                className="w-full flex flex-col items-start p-2.5 rounded-xl bg-slate-950/80 hover:bg-slate-800/80 border border-amber-500/30 hover:border-amber-500/60 transition text-left disabled:opacity-50"
+                className="flex w-full flex-col items-start border border-[#c45c26]/35 bg-[#c45c26]/10 p-3 text-left transition hover:border-[#c45c26]/60 disabled:opacity-50"
               >
-                <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold mb-0.5">
+                <div className="mb-0.5 flex items-center gap-1.5 text-[12px] font-semibold text-[#e8a87c]">
                   <ShieldAlert className="w-3.5 h-3.5" />
-                  <span>Quick Admin</span>
+                  <span>Quick admin</span>
                 </div>
-                <span className="text-[10px] font-mono text-slate-400 truncate w-full">
-                  Key: {keys.adminKey}
+                <span className="w-full truncate font-landing-mono text-[10px] text-[#f4f0ea]/40">
+                  {keys.adminKey}
                 </span>
               </button>
             )}
+            <button
+              type="button"
+              onClick={handleDismiss}
+              className="w-full pt-1 text-[12px] text-[#f4f0ea]/35 transition hover:text-[#f4f0ea]/70"
+            >
+              Cancel · back to landing
+            </button>
           </form>
         )}
       </div>
@@ -467,10 +526,10 @@ export const KeyAuthModal: React.FC = () => {
 function StatusBanner({ msg }: { msg: { type: 'error' | 'success'; text: string } }) {
   return (
     <div
-      className={`flex items-center gap-2 p-3 rounded-xl text-xs ${
+      className={`flex items-center gap-2 border p-3 text-xs ${
         msg.type === 'error'
-          ? 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
-          : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
+          ? 'border-rose-500/30 bg-rose-500/10 text-rose-200'
+          : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
       }`}
     >
       {msg.type === 'error' ? (
@@ -478,7 +537,7 @@ function StatusBanner({ msg }: { msg: { type: 'error' | 'success'; text: string 
       ) : (
         <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
       )}
-      <span>{msg.text}</span>
+      <span className="leading-snug">{msg.text}</span>
     </div>
   );
 }
