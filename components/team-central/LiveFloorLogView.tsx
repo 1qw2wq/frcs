@@ -26,7 +26,7 @@ export const LiveFloorLogView: React.FC<LiveFloorLogViewProps> = ({
             <span>Live Shop Floor Presence & Machine Operations</span>
           </h2>
           <p className="text-xs text-slate-400 font-mono mt-0.5">
-            Real-time RFID/NFC entryway check-ins • Current Shop Floor Count: {floorLog.length} Students
+            Live floor log from admin entry codes · {floorLog.length} entries
           </p>
         </div>
 
@@ -47,7 +47,7 @@ export const LiveFloorLogView: React.FC<LiveFloorLogViewProps> = ({
             onClick={onOpenKiosk}
             className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs font-mono shadow-md shadow-blue-600/30 transition cursor-pointer"
           >
-            Launch Entryway Kiosk
+            Refresh codes panel
           </button>
         </div>
       </div>

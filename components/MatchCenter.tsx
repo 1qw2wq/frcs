@@ -30,26 +30,29 @@ export const MatchCenter: React.FC<MatchCenterProps> = ({
   return (
     <div className="space-y-6">
       {/* Header with Filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-5 rounded-2xl">
-        <div>
+      <div className="relative overflow-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-slate-800 p-5 rounded-2xl shadow-xl">
+        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-amber-500/10 blur-3xl" />
+        <div className="relative">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-amber-400" />
+            <span className="p-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30">
+              <Trophy className="w-5 h-5 text-amber-400" />
+            </span>
             Tournament Match Center
           </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Real-time alliance schedule, win prediction probabilities, and live scores
+          <p className="text-xs text-slate-400 mt-1">
+            Live alliance schedule · win probabilities · SQL-backed scores · {matches.length} matches loaded
           </p>
         </div>
 
-        <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-medium">
+        <div className="relative flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800 text-xs font-medium">
           {(['all', 'In Progress', 'Upcoming', 'Completed'] as const).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={`px-3 py-1.5 rounded-lg transition capitalize ${
                 filter === f
-                  ? 'bg-blue-600 text-white font-semibold shadow-sm'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold shadow-md shadow-cyan-500/20'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
               }`}
             >
               {f === 'all' ? 'All Matches' : f}
@@ -60,6 +63,15 @@ export const MatchCenter: React.FC<MatchCenterProps> = ({
 
       {/* Match Cards List */}
       <div className="grid grid-cols-1 gap-4">
+        {filteredMatches.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/50 p-10 text-center">
+            <Trophy className="mx-auto mb-3 h-8 w-8 text-slate-600" />
+            <p className="text-sm font-semibold text-slate-300">No matches in the SQL database</p>
+            <p className="mt-1 text-xs text-slate-500 font-mono">
+              Open SQL Server → Clear Data → Restore Seed Data, or insert rows via the query console.
+            </p>
+          </div>
+        )}
         {filteredMatches.map((match) => {
           const isLive = match.status === 'In Progress';
           const isDone = match.status === 'Completed';
@@ -71,10 +83,10 @@ export const MatchCenter: React.FC<MatchCenterProps> = ({
           return (
             <div
               key={match.matchNumber}
-              className={`bg-slate-900 border rounded-2xl overflow-hidden transition shadow-lg ${
+              className={`bg-slate-900/90 border rounded-2xl overflow-hidden transition shadow-lg backdrop-blur ${
                 isLive
-                  ? 'border-amber-500/60 shadow-amber-500/10'
-                  : 'border-slate-800 hover:border-slate-700'
+                  ? 'border-amber-500/60 shadow-amber-500/15 ring-1 ring-amber-500/20'
+                  : 'border-slate-800 hover:border-cyan-500/30 hover:shadow-cyan-500/5'
               }`}
             >
               {/* Card Header */}

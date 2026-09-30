@@ -2,24 +2,39 @@ import type {Metadata} from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'FRC Telemetry & Scouting Command Center',
-  description: 'Full-featured FIRST Robotics Competition (FRC) dashboard with dual-key access control for administrators and members, live match analysis, pit scouting, SQL Server backend connector, picklist builder, and robot telemetry.',
+  title: 'Vortex Command · Team 5419',
+  description:
+    'Match scouting, pit ops, and team central for FIRST Robotics — built for the people on the field.',
   openGraph: {
-    title: 'FRC Telemetry & Scouting Command Center',
-    description: 'Full-featured FIRST Robotics Competition (FRC) dashboard with dual-key access control for administrators and members, live match analysis, pit scouting, SQL Server backend connector, picklist builder, and robot telemetry.',
+    title: 'Vortex Command · Team 5419',
+    description:
+      'Match scouting, pit ops, and team central for FIRST Robotics — built for the people on the field.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'FRC Telemetry & Scouting Command Center',
-    description: 'Full-featured FIRST Robotics Competition (FRC) dashboard with dual-key access control for administrators and members, live match analysis, pit scouting, SQL Server backend connector, picklist builder, and robot telemetry.',
+    title: 'Vortex Command · Team 5419',
+    description:
+      'Match scouting, pit ops, and team central for FIRST Robotics — built for the people on the field.',
   },
 };
 
 export default function RootLayout({children}: {children: React.ReactNode}) {
   return (
     <html lang="en" className="dark">
-      <body suppressHydrationWarning className="bg-slate-950 text-slate-100 min-h-screen antialiased selection:bg-cyan-500/30 selection:text-cyan-200">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {/* Fraunces = soft serif display · Outfit = geometric sans · IBM Plex Mono = technical captions */}
+        <link
+          href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body
+        suppressHydrationWarning
+        className="font-sans text-slate-100 min-h-screen antialiased selection:bg-orange-400/30 selection:text-orange-50"
+      >
         {children}
       </body>
     </html>

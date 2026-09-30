@@ -14,18 +14,16 @@ import { LeadOverviewView } from '@/components/team-central/LeadOverviewView';
 import { SubteamView } from '@/components/team-central/SubteamView';
 import { EngineeringNotesAndDemosView } from '@/components/team-central/EngineeringNotesAndDemosView';
 
-// Modals
-import { NfcScanModal } from '@/components/team-central/NfcScanModal';
+import { FloorEntryModal } from '@/components/team-central/FloorEntryModal';
+import { AdminFloorCodesPanel } from '@/components/team-central/AdminFloorCodesPanel';
 import { RequestMachineModal } from '@/components/team-central/RequestMachineModal';
 import { HourAppealModal } from '@/components/team-central/HourAppealModal';
 import { FirstSyncModal } from '@/components/team-central/FirstSyncModal';
 import { RequestTrainingModal } from '@/components/team-central/RequestTrainingModal';
 import { TaskDetailModal } from '@/components/team-central/TaskDetailModal';
-import { KioskModal } from '@/components/team-central/KioskModal';
 import { KeyAuthModal } from '@/components/KeyAuthModal';
 import { KeyManagementModal } from '@/components/KeyManagementModal';
 
-// Tournament Scouting & SQL Components
 import { Navbar } from '@/components/Navbar';
 import { MatchCenter } from '@/components/MatchCenter';
 import { MatchScoutingForm } from '@/components/MatchScoutingForm';
@@ -34,26 +32,9 @@ import { TeamAnalytics } from '@/components/TeamAnalytics';
 import { PicklistBuilder } from '@/components/PicklistBuilder';
 import { RobotTelemetry } from '@/components/RobotTelemetry';
 import { SqlServerManager } from '@/components/SqlServerManager';
+import { ScoutingTeamsPanel } from '@/components/ScoutingTeamsPanel';
 
-// Initial Data & Types
-import {
-  INITIAL_CERTIFICATIONS,
-  INITIAL_BUILD_SCHEDULE,
-  INITIAL_TASKS,
-  INITIAL_ROSTER,
-  INITIAL_FLOOR_LOG,
-  INITIAL_ENGINEERING_NOTES,
-  INITIAL_OUTREACH_DEMOS,
-  INITIAL_MACHINE_RESERVATIONS,
-  INITIAL_HOUR_APPEALS,
-} from '@/lib/teamCentralData';
-import {
-  INITIAL_TEAMS,
-  INITIAL_MATCHES,
-  INITIAL_SCOUTING_ENTRIES,
-  INITIAL_PIT_DATA,
-  INITIAL_PICKLIST,
-} from '@/lib/defaultData';
+import { INITIAL_BUILD_SCHEDULE } from '@/lib/teamCentralData';
 import {
   Certification,
   SubsystemTask,
@@ -65,62 +46,133 @@ import {
   HourAppealRecord,
 } from '@/types/teamCentral';
 import { FrcTeam, FrcMatch, MatchScoutingEntry, PitScoutingData, PicklistTeam } from '@/types/frc';
-import { ArrowLeft, Database, Sparkles } from 'lucide-react';
+import { LandingPage } from '@/components/LandingPage';
+import { ArrowLeft, Database, Loader2, Lock } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 function DashboardContent() {
-  const { role, activeKey, isAdmin, isMember, openAuthModal, sqlConnectionKey } = useAuthKey();
+  const {
+    role,
+    isAdmin,
+    isMember,
+    isAuthenticated,
+    authReady,
+    openAuthModal,
+    openKeyManagement,
+    logout,
+    activeKey,
+    sqlConnectionKey,
+    memberProfile,
+  } = useAuthKey();
 
-  // Navigation state
+  const memberDisplayName = memberProfile?.displayName || memberProfile?.name || 'Team Member';
+
+  // Separate home tabs per role — no shared Student/Admin toggle
   const [currentTab, setCurrentTab] = useState<string>('student-home');
-  const [portalMode, setPortalMode] = useState<'student' | 'admin'>('student');
+  const [appMode, setAppMode] = useState<'team-central' | 'scouting'>('team-central');
 
-  // Team Central State
-  const [certifications, setCertifications] = useState<Certification[]>(INITIAL_CERTIFICATIONS);
-  const [tasks, setTasks] = useState<SubsystemTask[]>(INITIAL_TASKS);
-  const [roster, setRoster] = useState<MemberRosterItem[]>(INITIAL_ROSTER);
-  const [floorLog, setFloorLog] = useState<FloorCheckIn[]>(INITIAL_FLOOR_LOG);
-  const [notes, setNotes] = useState<EngineeringNote[]>(INITIAL_ENGINEERING_NOTES);
-  const [demos, setDemos] = useState<OutreachDemo[]>(INITIAL_OUTREACH_DEMOS);
-  const [machineReservations, setMachineReservations] = useState<MachineReservation[]>(INITIAL_MACHINE_RESERVATIONS);
-  const [hourAppeals, setHourAppeals] = useState<HourAppealRecord[]>(INITIAL_HOUR_APPEALS);
+  useEffect(() => {
+    if (!authReady) return;
+    if (role === 'admin') {
+      setCurrentTab('lead-overview');
+      setAppMode('team-central');
+    } else if (role === 'member') {
+      setCurrentTab('student-home');
+      setAppMode('team-central');
+      setScoutingTab((t) => (t === 'sql' || t === 'picklist' ? 'scout-match' : t));
+    }
+  }, [role, authReady]);
 
-  const [loggedHours, setLoggedHours] = useState<number>(64.5);
-  const [isCheckedIn, setIsCheckedIn] = useState<boolean>(true);
+  // Team Central State — start empty; hydrate from /api/data (or seed after reset)
+  const [certifications, setCertifications] = useState<Certification[]>([]);
+  const [tasks, setTasks] = useState<SubsystemTask[]>([]);
+  const [roster, setRoster] = useState<MemberRosterItem[]>([]);
+  const [floorLog, setFloorLog] = useState<FloorCheckIn[]>([]);
+  const [notes, setNotes] = useState<EngineeringNote[]>([]);
+  const [demos, setDemos] = useState<OutreachDemo[]>([]);
+  const [machineReservations, setMachineReservations] = useState<MachineReservation[]>([]);
+  const [hourAppeals, setHourAppeals] = useState<HourAppealRecord[]>([]);
 
-  // Modals state
-  const [isNfcOpen, setIsNfcOpen] = useState(false);
+  const [loggedHours, setLoggedHours] = useState<number>(0);
+  const [isCheckedIn, setIsCheckedIn] = useState<boolean>(false);
+
+  const [isFloorEntryOpen, setIsFloorEntryOpen] = useState(false);
   const [isMachineModalOpen, setIsMachineModalOpen] = useState(false);
   const [isHourAppealOpen, setIsHourAppealOpen] = useState(false);
   const [isFirstSyncOpen, setIsFirstSyncOpen] = useState(false);
   const [isTrainingModalOpen, setIsTrainingModalOpen] = useState(false);
-  const [isKioskOpen, setIsKioskOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<SubsystemTask | null>(null);
+  const [lastEntryTime, setLastEntryTime] = useState<string | null>(null);
 
-  // Tournament Scouting State
   const [scoutingTab, setScoutingTab] = useState<string>('matches');
-  const [teams, setTeams] = useState<FrcTeam[]>(INITIAL_TEAMS);
-  const [matches, setMatches] = useState<FrcMatch[]>(INITIAL_MATCHES);
-  const [scoutingEntries, setScoutingEntries] = useState<MatchScoutingEntry[]>(INITIAL_SCOUTING_ENTRIES);
-  const [pitData, setPitData] = useState<PitScoutingData[]>(INITIAL_PIT_DATA);
-  const [picklist, setPicklist] = useState<PicklistTeam[]>(INITIAL_PICKLIST);
+  const [teams, setTeams] = useState<FrcTeam[]>([]);
+  const [matches, setMatches] = useState<FrcMatch[]>([]);
+  const [scoutingEntries, setScoutingEntries] = useState<MatchScoutingEntry[]>([]);
+  const [pitData, setPitData] = useState<PitScoutingData[]>([]);
+  const [picklist, setPicklist] = useState<PicklistTeam[]>([]);
   const [selectedTeamNumber, setSelectedTeamNumber] = useState<number>(254);
   const [prefilledMatch, setPrefilledMatch] = useState<number>(44);
   const [prefilledTeam, setPrefilledTeam] = useState<number>(254);
   const [prefilledAlliance, setPrefilledAlliance] = useState<'Red' | 'Blue'>('Red');
+  const [backendLabel, setBackendLabel] = useState<string>('SQL');
 
-  // Load backend API data if available
+  const applyDataset = (data: {
+    teams?: FrcTeam[];
+    matches?: FrcMatch[];
+    scoutingEntries?: MatchScoutingEntry[];
+    pitData?: PitScoutingData[];
+    picklist?: PicklistTeam[];
+    certifications?: Certification[];
+    tasks?: SubsystemTask[];
+    roster?: MemberRosterItem[];
+    floorLog?: FloorCheckIn[];
+    notes?: EngineeringNote[];
+    demos?: OutreachDemo[];
+    machineReservations?: MachineReservation[];
+    hourAppeals?: HourAppealRecord[];
+    loggedHours?: number;
+    isCheckedIn?: boolean;
+    backend?: { engine?: string; message?: string };
+  }) => {
+    // Always set arrays (including empty) so clear-all updates the whole UI
+    if (data.teams !== undefined) setTeams(data.teams);
+    if (data.matches !== undefined) setMatches(data.matches);
+    if (data.scoutingEntries !== undefined) setScoutingEntries(data.scoutingEntries);
+    if (data.pitData !== undefined) setPitData(data.pitData);
+    if (data.picklist !== undefined) setPicklist(data.picklist);
+
+    if (data.certifications !== undefined) setCertifications(data.certifications);
+    if (data.tasks !== undefined) setTasks(data.tasks);
+    if (data.roster !== undefined) setRoster(data.roster);
+    if (data.floorLog !== undefined) setFloorLog(data.floorLog);
+    if (data.notes !== undefined) setNotes(data.notes);
+    if (data.demos !== undefined) setDemos(data.demos);
+    if (data.machineReservations !== undefined) setMachineReservations(data.machineReservations);
+    if (data.hourAppeals !== undefined) setHourAppeals(data.hourAppeals);
+    if (data.loggedHours !== undefined) setLoggedHours(data.loggedHours);
+    if (data.isCheckedIn !== undefined) setIsCheckedIn(data.isCheckedIn);
+
+    if (data.backend?.engine) {
+      const eng = data.backend.engine;
+      setBackendLabel(
+        eng === 'postgres'
+          ? 'Postgres'
+          : eng === 'supabase'
+            ? 'Supabase'
+            : eng === 'sqlite'
+              ? 'SQLite'
+              : String(eng)
+      );
+    }
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch('/api/data');
+        const res = await fetch('/api/data', { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
-          if (data.teams) setTeams(data.teams);
-          if (data.matches) setMatches(data.matches);
-          if (data.scoutingEntries) setScoutingEntries(data.scoutingEntries);
-          if (data.pitData) setPitData(data.pitData);
-          if (data.picklist) setPicklist(data.picklist);
+          applyDataset(data);
         }
       } catch (e) {
         console.warn('Using local client state for FRC dataset', e);
@@ -129,33 +181,49 @@ function DashboardContent() {
     fetchData();
   }, []);
 
-  // Floor Check-in Handlers
-  const handleToggleMyCheckIn = () => {
-    setIsCheckedIn((prev) => {
-      const next = !prev;
-      setRoster((currentRoster) =>
-        currentRoster.map((m) =>
-          m.id === 'm-1' ? { ...m, isCheckedIn: next } : m
-        )
-      );
-      if (!next) {
-        setLoggedHours((h) => Math.round((h + 0.5) * 10) / 10);
-      }
-      return next;
-    });
-  };
-
   const handleToggleStudentCheckIn = (studentId: string) => {
+    // Admin-only roster flag toggle (no PIN/NFC). Prefer entry-code log for real time tracking.
     setRoster((currentRoster) =>
       currentRoster.map((m) => {
         if (m.id === studentId) {
-          const nextState = !m.isCheckedIn;
-          if (m.id === 'm-1') setIsCheckedIn(nextState);
-          return { ...m, isCheckedIn: nextState };
+          return { ...m, isCheckedIn: !m.isCheckedIn };
         }
         return m;
       })
     );
+  };
+
+  const handleRedeemFloorCode = async (code: string) => {
+    const name = memberDisplayName;
+    const res = await fetch('/api/floor', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        action: 'redeem',
+        code,
+        memberName: name,
+        memberId: memberProfile?.id,
+        accessKey: activeKey,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.success) {
+      return { success: false, message: body.message || body.error || 'Invalid entry code' };
+    }
+    if (body.dataset) applyDataset(body.dataset);
+    else if (body.floorLog) setFloorLog(body.floorLog);
+    else {
+      const refreshed = await fetch('/api/data', { cache: 'no-store' });
+      if (refreshed.ok) applyDataset(await refreshed.json());
+    }
+    const t = body.entry?.checkInTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setLastEntryTime(t);
+    setIsCheckedIn(true);
+    return {
+      success: true,
+      message: body.message || `Enter time logged at ${t}`,
+      checkInTime: t,
+    };
   };
 
   const handleHourAppealSubmitted = (appeal: HourAppealRecord) => {
@@ -164,6 +232,7 @@ function DashboardContent() {
   };
 
   const handleApproveAppeal = (appealId: string) => {
+    if (!isAdmin) return;
     setHourAppeals((prev) =>
       prev.map((a) => (a.id === appealId ? { ...a, status: 'APPROVED' } : a))
     );
@@ -179,7 +248,6 @@ function DashboardContent() {
     );
   };
 
-  // Machine Reservation Handler
   const handleMachineReserved = (details: {
     machine: string;
     timeSlot: string;
@@ -201,14 +269,8 @@ function DashboardContent() {
     setMachineReservations((prev) => [newReservation, ...prev]);
   };
 
-  // Engineering Notes & Demos Handlers
-  const handleAddNote = (newNote: EngineeringNote) => {
-    setNotes((prev) => [newNote, ...prev]);
-  };
-
-  const handleAddDemo = (newDemo: OutreachDemo) => {
-    setDemos((prev) => [newDemo, ...prev]);
-  };
+  const handleAddNote = (newNote: EngineeringNote) => setNotes((prev) => [newNote, ...prev]);
+  const handleAddDemo = (newDemo: OutreachDemo) => setDemos((prev) => [newDemo, ...prev]);
 
   const handleToggleDemoChecklistItem = (demoId: string, checklistId: string) => {
     setDemos((prev) =>
@@ -229,8 +291,8 @@ function DashboardContent() {
     );
   };
 
-  // Task Handlers
   const handleAddTask = (newTask: SubsystemTask) => {
+    if (!isAdmin && !isMember) return;
     setTasks((prev) => [newTask, ...prev]);
   };
 
@@ -239,13 +301,16 @@ function DashboardContent() {
     setSelectedTask(updatedTask);
   };
 
-  // Member Handlers
   const handleAddMember = (newMember: MemberRosterItem) => {
+    if (!isAdmin) return;
     setRoster((prev) => [...prev, newMember]);
   };
 
-  // Tournament Scouting Handlers
-  const handleSelectScoutMatch = (matchNumber: number, teamNumber: number, alliance: 'Red' | 'Blue') => {
+  const handleSelectScoutMatch = (
+    matchNumber: number,
+    teamNumber: number,
+    alliance: 'Red' | 'Blue'
+  ) => {
     setPrefilledMatch(matchNumber);
     setPrefilledTeam(teamNumber);
     setPrefilledAlliance(alliance);
@@ -257,6 +322,12 @@ function DashboardContent() {
     setScoutingTab('analytics');
   };
 
+  const authHeaders = (): HeadersInit => {
+    const h: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (activeKey) h['x-frc-access-key'] = activeKey;
+    return h;
+  };
+
   const handleSaveScoutingEntry = async (entry: Partial<MatchScoutingEntry>) => {
     const fullEntry: MatchScoutingEntry = {
       id: entry.id || `entry-${Date.now()}`,
@@ -264,7 +335,7 @@ function DashboardContent() {
       teamNumber: entry.teamNumber || prefilledTeam,
       alliance: entry.alliance || prefilledAlliance,
       driverStation: entry.driverStation || 1,
-      scoutName: entry.scoutName || 'Maya Patel',
+      scoutName: entry.scoutName || memberDisplayName || 'Scout Member',
       timestamp: entry.timestamp || new Date().toISOString(),
       autoLeave: entry.autoLeave || false,
       autoCoralL1: entry.autoCoralL1 || 0,
@@ -289,13 +360,20 @@ function DashboardContent() {
       cards: entry.cards || 'None',
       notes: entry.notes || '',
     };
-    setScoutingEntries((prev) => [fullEntry, ...prev]);
+    setScoutingEntries((prev) => {
+      const without = prev.filter((e) => e.id !== fullEntry.id);
+      return [fullEntry, ...without];
+    });
     try {
-      await fetch('/api/data', {
+      const res = await fetch('/api/data', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'scoutingEntry', data: fullEntry }),
+        headers: authHeaders(),
+        body: JSON.stringify({ type: 'scoutingEntry', data: fullEntry, accessKey: activeKey }),
       });
+      if (res.ok) {
+        const refreshed = await fetch('/api/data', { cache: 'no-store' });
+        if (refreshed.ok) applyDataset(await refreshed.json());
+      }
     } catch (e) {
       console.warn('Scouting entry saved in local state');
     }
@@ -312,52 +390,140 @@ function DashboardContent() {
       return [...prev, data];
     });
     try {
-      await fetch('/api/data', {
+      const res = await fetch('/api/data', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'pitData', data }),
+        headers: authHeaders(),
+        body: JSON.stringify({ type: 'pitData', data, accessKey: activeKey }),
       });
+      if (res.ok) {
+        const refreshed = await fetch('/api/data', { cache: 'no-store' });
+        if (refreshed.ok) applyDataset(await refreshed.json());
+      }
     } catch (e) {
       console.warn('Pit data saved in local state');
     }
   };
 
   const handleSavePicklist = async (newPicklist: PicklistTeam[]) => {
+    if (!isAdmin) return;
     setPicklist(newPicklist);
     try {
       await fetch('/api/data', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'picklist', data: newPicklist }),
+        headers: authHeaders(),
+        body: JSON.stringify({ type: 'picklist', data: newPicklist, accessKey: activeKey }),
       });
     } catch (e) {
       console.warn('Picklist saved in local state');
     }
   };
 
-  // Occupancy count
+  const handleAddScoutingTeam = async (input: {
+    number: number;
+    name: string;
+    organization?: string;
+    location?: string;
+  }) => {
+    if (!isAdmin && !isMember) throw new Error('Sign in with a member or admin key to add teams.');
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        type: 'addTeam',
+        data: input,
+        accessKey: activeKey,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'Failed to add team');
+    if (body.dataset) applyDataset(body.dataset);
+    else {
+      const refreshed = await fetch('/api/data', { cache: 'no-store' });
+      if (refreshed.ok) applyDataset(await refreshed.json());
+    }
+    setSelectedTeamNumber(input.number);
+    setPrefilledTeam(input.number);
+  };
+
+  const handleDeleteScoutingTeam = async (teamNumber: number) => {
+    if (!isAdmin && !isMember) throw new Error('Sign in with a member or admin key to delete teams.');
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        type: 'deleteTeam',
+        data: { number: teamNumber },
+        accessKey: activeKey,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'Failed to delete team');
+    if (body.dataset) applyDataset(body.dataset);
+    else {
+      const refreshed = await fetch('/api/data', { cache: 'no-store' });
+      if (refreshed.ok) applyDataset(await refreshed.json());
+    }
+    if (selectedTeamNumber === teamNumber) {
+      setSelectedTeamNumber(0);
+    }
+  };
+
+  const handleSqlDatasetChange = (dataset: Record<string, any>) => {
+    applyDataset(dataset as any);
+  };
+
   const shopOccupancy = roster.filter((r) => r.isCheckedIn).length;
 
+  // Loading auth
+  if (!authReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#070A10] text-slate-300">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+          <p className="text-xs font-mono text-slate-400">Loading Vortex Command…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Public landing — no forced login modal
+  if (!isAuthenticated) {
+    return (
+      <>
+        <LandingPage onEnter={() => openAuthModal()} />
+        <KeyAuthModal />
+      </>
+    );
+  }
+
+  const openScouting = () => {
+    setAppMode('scouting');
+    setScoutingTab(isAdmin ? 'matches' : 'scout-match');
+  };
+
   return (
-    <div className="min-h-screen bg-[#070A10] text-slate-100 flex flex-col font-sans">
-      {/* If currentTab === 'scouting-console', render Tournament Scouting Sub-App */}
-      {currentTab === 'scouting-console' ? (
+    <div className="min-h-screen text-slate-100 flex flex-col font-sans">
+      {appMode === 'scouting' ? (
         <div className="flex-1 flex flex-col">
-          {/* Scouting Top Navigation Bar */}
-          <header className="border-b border-slate-800/80 bg-[#0B0F17]/95 backdrop-blur sticky top-0 z-40">
+          <header className="border-b border-slate-800/80 bg-[#0B0F17]/90 backdrop-blur-xl sticky top-0 z-40 shadow-lg shadow-black/20">
             <div className="max-w-[1600px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setCurrentTab('student-home')}
-                  className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition flex items-center gap-1.5 text-xs font-mono cursor-pointer"
+                  onClick={() => {
+                    setAppMode('team-central');
+                    setCurrentTab(isAdmin ? 'lead-overview' : 'student-home');
+                  }}
+                  className="p-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-slate-400 hover:text-white hover:border-cyan-500/40 hover:bg-slate-800 transition flex items-center gap-1.5 text-xs font-mono cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
-                  <span className="hidden sm:inline">Back to Team Central</span>
+                  <span className="hidden sm:inline">
+                    Back to {isAdmin ? 'Admin Console' : 'Member Portal'}
+                  </span>
                 </button>
                 <div className="h-4 w-px bg-slate-800" />
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold text-xs">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500/30 to-blue-600/30 border border-cyan-400/30 flex items-center justify-center text-cyan-300 font-black text-xs shadow-lg shadow-cyan-500/10">
                     5419
                   </div>
                   <div>
@@ -365,39 +531,81 @@ function DashboardContent() {
                       FRC MATCH & PIT SCOUTING CONSOLE
                     </h2>
                     <p className="text-[10px] font-mono text-slate-400">
-                      Reefscape 2025 • SQL Central Storage
+                      {isAdmin ? 'ADMIN' : memberDisplayName} · {backendLabel} Backend
                     </p>
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="hidden md:flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-slate-300">
+                <span className="hidden md:flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded-full bg-emerald-950/50 border border-emerald-500/30 text-emerald-300">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  </span>
                   <Database className="w-3 h-3 text-cyan-400" />
-                  {sqlConnectionKey ? 'SQL DB CONNECTED' : 'SQL DB READY'}
+                  {backendLabel} · {teams.length} teams · {scoutingEntries.length} scouts
+                </span>
+                <span
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-mono font-bold border ${
+                    isAdmin
+                      ? 'bg-amber-500/10 border-amber-500/40 text-amber-300'
+                      : 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300'
+                  }`}
+                >
+                  {isAdmin ? 'ADMIN' : 'MEMBER'}
                 </span>
                 <button
                   type="button"
                   onClick={() => openAuthModal()}
-                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-mono text-slate-300 hover:text-white transition cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-mono text-slate-300 hover:text-white hover:border-cyan-500/30 transition cursor-pointer"
                 >
-                  {role.toUpperCase()} MODE
+                  Switch Key
+                </button>
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-rose-950 border border-slate-800 hover:border-rose-500/40 text-xs font-mono text-slate-400 hover:text-rose-300 transition cursor-pointer"
+                >
+                  Logout
                 </button>
               </div>
             </div>
 
-            {/* Scouting Navigation Bar */}
             <div className="border-t border-slate-900">
               <Navbar
                 activeTab={scoutingTab}
-                setActiveTab={setScoutingTab}
-                sqlStatus={sqlConnectionKey ? 'connected' : 'local_fallback'}
+                setActiveTab={(tab) => {
+                  // Members cannot open SQL or picklist editor
+                  if (!isAdmin && (tab === 'sql' || tab === 'picklist')) return;
+                  setScoutingTab(tab);
+                }}
+                sqlStatus={
+                  sqlConnectionKey ||
+                  backendLabel === 'Supabase' ||
+                  backendLabel === 'Postgres'
+                    ? 'connected'
+                    : 'local_fallback'
+                }
               />
             </div>
           </header>
 
-          {/* Scouting Main View Container */}
-          <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6">
+          <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6 space-y-5">
+            {(isAdmin || isMember) &&
+              (scoutingTab === 'matches' ||
+                scoutingTab === 'scout-match' ||
+                scoutingTab === 'scout-pit' ||
+                scoutingTab === 'analytics') && (
+                <ScoutingTeamsPanel
+                  teams={teams}
+                  onAddTeam={handleAddScoutingTeam}
+                  onDeleteTeam={handleDeleteScoutingTeam}
+                  canManage={isAdmin || isMember}
+                  compact={scoutingTab !== 'matches' && scoutingTab !== 'scout-match'}
+                />
+              )}
+
             <AnimatePresence mode="wait">
               <motion.div
                 key={scoutingTab}
@@ -445,7 +653,7 @@ function DashboardContent() {
                   />
                 )}
 
-                {scoutingTab === 'picklist' && (
+                {scoutingTab === 'picklist' && isAdmin && (
                   <PicklistBuilder
                     teams={teams}
                     picklist={picklist}
@@ -455,39 +663,59 @@ function DashboardContent() {
                 )}
 
                 {scoutingTab === 'telemetry' && <RobotTelemetry />}
-                {scoutingTab === 'sql' && <SqlServerManager />}
+
+                {scoutingTab === 'sql' && isAdmin && (
+                  <SqlServerManager onDatasetChange={handleSqlDatasetChange} />
+                )}
+
+                {scoutingTab === 'sql' && !isAdmin && (
+                  <div className="rounded-2xl border border-rose-500/30 bg-rose-950/20 p-8 text-center">
+                    <Lock className="w-8 h-8 text-rose-400 mx-auto mb-3" />
+                    <h3 className="text-white font-bold">Administrator Only</h3>
+                    <p className="text-xs text-slate-400 mt-1 font-mono">
+                      SQL Server management and clear-data require the Administrator key.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => openAuthModal()}
+                      className="mt-4 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold"
+                    >
+                      Switch to Admin Key
+                    </button>
+                  </div>
+                )}
               </motion.div>
             </AnimatePresence>
           </main>
         </div>
       ) : (
-        /* Team Central Layout: Left Sidebar + Top Bar + Responsive Content */
         <div className="flex-1 flex min-h-screen">
-          {/* Left Navigation Sidebar */}
           <Sidebar
             currentTab={currentTab}
             setCurrentTab={setCurrentTab}
-            portalMode={portalMode}
-            setPortalMode={setPortalMode}
-            onOpenScoutingConsole={() => setCurrentTab('scouting-console')}
+            onOpenScoutingConsole={openScouting}
+            role={role === 'admin' || role === 'member' ? role : 'member'}
           />
 
-          {/* Main Area */}
           <div className="flex-1 flex flex-col min-w-0 bg-[#070A10]">
-            {/* Top Navigation Bar */}
             <TopBar
-              portalMode={portalMode}
-              setPortalMode={setPortalMode}
               shopOccupancy={shopOccupancy}
-              onOpenKiosk={() => setIsKioskOpen(true)}
               isCheckedIn={isCheckedIn}
-              onOpenNfc={() => setIsNfcOpen(true)}
-              studentName="Maya Patel"
-              roleTitle="CO-CAPTAIN / SOFTWARE LEAD"
+              onOpenFloorEntry={() => setIsFloorEntryOpen(true)}
+              lastEntryTime={lastEntryTime}
+              studentName={isAdmin ? 'Administrator' : memberDisplayName}
+              roleTitle={
+                isAdmin
+                  ? 'Administrator · Full Access'
+                  : `${memberDisplayName} · Member Portal`
+              }
               onOpenRoleSwitcher={() => openAuthModal()}
+              isAdmin={isAdmin}
+              onLogout={logout}
+              onManageKeys={isAdmin ? openKeyManagement : undefined}
+              showFloorControls={!isAdmin}
             />
 
-            {/* View Container */}
             <main className="flex-1 px-4 sm:px-8 py-6 max-w-[1600px] w-full mx-auto">
               <AnimatePresence mode="wait">
                 <motion.div
@@ -497,12 +725,13 @@ function DashboardContent() {
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.15 }}
                 >
-                  {currentTab === 'student-home' && (
+                  {/* Member-only home */}
+                  {currentTab === 'student-home' && !isAdmin && (
                     <StudentHome
                       certifications={certifications}
-                      schedule={INITIAL_BUILD_SCHEDULE}
+                      schedule={roster.length || tasks.length ? INITIAL_BUILD_SCHEDULE : []}
                       tasks={tasks}
-                      onOpenNfc={() => setIsNfcOpen(true)}
+                      onOpenFloorEntry={() => setIsFloorEntryOpen(true)}
                       onOpenMachineRequest={() => setIsMachineModalOpen(true)}
                       onOpenHourAppeal={() => setIsHourAppealOpen(true)}
                       onOpenFirstSync={() => setIsFirstSyncOpen(true)}
@@ -510,10 +739,12 @@ function DashboardContent() {
                       onSelectTask={(task) => setSelectedTask(task)}
                       loggedHours={loggedHours}
                       isCheckedIn={isCheckedIn}
+                      memberName={memberDisplayName}
+                      lastEntryTime={lastEntryTime}
                     />
                   )}
 
-                  {currentTab === 'badges-hours' && (
+                  {currentTab === 'badges-hours' && !isAdmin && (
                     <BadgesAndHoursView
                       onOpenHourAppeal={() => setIsHourAppealOpen(true)}
                       loggedHours={loggedHours}
@@ -522,14 +753,14 @@ function DashboardContent() {
                     />
                   )}
 
-                  {currentTab === 'assigned-subsystems' && (
+                  {currentTab === 'assigned-subsystems' && !isAdmin && (
                     <AssignedSubsystemsView
                       tasks={tasks}
                       onSelectTask={(task) => setSelectedTask(task)}
                     />
                   )}
 
-                  {currentTab === 'notes-demos' && (
+                  {currentTab === 'notes-demos' && !isAdmin && (
                     <EngineeringNotesAndDemosView
                       notes={notes}
                       demos={demos}
@@ -539,14 +770,15 @@ function DashboardContent() {
                     />
                   )}
 
-                  {(currentTab === 'lead-overview' || currentTab === 'metrics-operations') && (
-                    <LeadOverviewView
-                      roster={roster}
-                      onOpenKiosk={() => setIsKioskOpen(true)}
-                    />
+                  {/* Admin-only */}
+                  {currentTab === 'lead-overview' && isAdmin && (
+                    <div className="space-y-5">
+                      <AdminFloorCodesPanel accessKey={activeKey} />
+                      <LeadOverviewView roster={roster} onOpenKiosk={() => setCurrentTab('live-floor-log')} />
+                    </div>
                   )}
 
-                  {currentTab === 'all-members' && (
+                  {currentTab === 'all-members' && isAdmin && (
                     <AllMembersView
                       roster={roster}
                       onToggleStudentCheckIn={handleToggleStudentCheckIn}
@@ -561,30 +793,21 @@ function DashboardContent() {
                     />
                   )}
 
-                  {currentTab === 'live-floor-log' && (
-                    <LiveFloorLogView
-                      floorLog={floorLog}
-                      machineReservations={machineReservations}
-                      onOpenKiosk={() => setIsKioskOpen(true)}
-                      onOpenMachineRequest={() => setIsMachineModalOpen(true)}
-                    />
+                  {currentTab === 'live-floor-log' && isAdmin && (
+                    <div className="space-y-5">
+                      <AdminFloorCodesPanel accessKey={activeKey} />
+                      <LiveFloorLogView
+                        floorLog={floorLog}
+                        machineReservations={machineReservations}
+                        onOpenKiosk={() => undefined}
+                        onOpenMachineRequest={() => setIsMachineModalOpen(true)}
+                      />
+                    </div>
                   )}
 
-                  {currentTab === 'kiosk-eligibility' && (
+                  {currentTab === 'kiosk-eligibility' && isAdmin && (
                     <div className="space-y-4">
-                      <div className="p-6 rounded-2xl bg-[#0F172A] border border-slate-800 text-center space-y-4">
-                        <h2 className="text-xl font-bold text-white">Shop Entryway Kiosk Mode</h2>
-                        <p className="text-xs text-slate-400 max-w-lg mx-auto font-mono">
-                          Launch the fullscreen kiosk terminal for iPad/touch monitors mounted at the machine shop entryway.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => setIsKioskOpen(true)}
-                          className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs font-mono uppercase tracking-wider shadow-lg shadow-blue-600/30 transition cursor-pointer"
-                        >
-                          Open Kiosk Terminal Now
-                        </button>
-                      </div>
+                      <AdminFloorCodesPanel accessKey={activeKey} />
                       <AllMembersView
                         roster={roster}
                         onToggleStudentCheckIn={handleToggleStudentCheckIn}
@@ -612,14 +835,11 @@ function DashboardContent() {
         </div>
       )}
 
-      {/* Interactive Modals */}
-      <NfcScanModal
-        isOpen={isNfcOpen}
-        onClose={() => setIsNfcOpen(false)}
-        isCheckedIn={isCheckedIn}
-        onToggleCheckIn={handleToggleMyCheckIn}
-        studentName="Maya Patel"
-        studentId="#5419-STU-0042"
+      <FloorEntryModal
+        isOpen={isFloorEntryOpen}
+        onClose={() => setIsFloorEntryOpen(false)}
+        memberName={memberDisplayName}
+        onRedeem={handleRedeemFloorCode}
       />
 
       <RequestMachineModal
@@ -634,10 +854,7 @@ function DashboardContent() {
         onSuccess={handleHourAppealSubmitted}
       />
 
-      <FirstSyncModal
-        isOpen={isFirstSyncOpen}
-        onClose={() => setIsFirstSyncOpen(false)}
-      />
+      <FirstSyncModal isOpen={isFirstSyncOpen} onClose={() => setIsFirstSyncOpen(false)} />
 
       <RequestTrainingModal
         isOpen={isTrainingModalOpen}
@@ -651,25 +868,61 @@ function DashboardContent() {
         onUpdateTask={handleUpdateTask}
       />
 
-      <KioskModal
-        isOpen={isKioskOpen}
-        onClose={() => setIsKioskOpen(false)}
-        roster={roster}
-        floorLog={floorLog}
-        onToggleStudentCheckIn={handleToggleStudentCheckIn}
-      />
-
-      {/* Security & Access Key Modals */}
       <KeyAuthModal />
       <KeyManagementModal />
     </div>
   );
 }
 
+class ClientErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('Client error boundary:', error);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[#070A10] p-6 text-center">
+          <div className="max-w-md space-y-3 rounded-2xl border border-rose-500/30 bg-rose-950/20 p-8">
+            <h1 className="text-lg font-bold text-white">Something went wrong</h1>
+            <p className="text-xs font-mono text-rose-200/90 break-words">{this.state.error.message}</p>
+            <button
+              type="button"
+              className="mt-2 rounded-xl bg-cyan-600 px-4 py-2 text-xs font-semibold text-white"
+              onClick={() => {
+                try {
+                  localStorage.clear();
+                } catch {
+                  /* ignore */
+                }
+                window.location.reload();
+              }}
+            >
+              Clear session & reload
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function Page() {
   return (
     <AuthKeyProvider>
-      <DashboardContent />
+      <ClientErrorBoundary>
+        <DashboardContent />
+      </ClientErrorBoundary>
     </AuthKeyProvider>
   );
 }

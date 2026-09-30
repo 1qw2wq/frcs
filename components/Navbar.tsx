@@ -29,18 +29,27 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, sqlStat
 
   const navItems = [
     { id: 'matches', label: 'Match Center', icon: Trophy },
-    { id: 'scouting', label: 'Match Scouting', icon: ClipboardList },
-    { id: 'pit', label: 'Pit Specs', icon: Wrench },
+    { id: 'scout-match', label: 'Match Scouting', icon: ClipboardList },
+    { id: 'scout-pit', label: 'Pit Specs', icon: Wrench },
     { id: 'analytics', label: 'Team Analytics', icon: BarChart3 },
-    { id: 'picklist', label: 'Picklist Strategy', icon: Sparkles },
+    ...(isAdmin
+      ? [
+          { id: 'picklist', label: 'Picklist Strategy', icon: Sparkles },
+          {
+            id: 'sql',
+            label: 'SQL Server',
+            icon: Server,
+            badge: sqlStatus === 'connected' ? 'LIVE' : 'SQL',
+          },
+        ]
+      : []),
     { id: 'telemetry', label: 'Robot Telemetry', icon: Cpu },
-    { id: 'sql', label: 'SQL Server', icon: Server, badge: sqlStatus === 'connected' ? 'LIVE' : 'SQL' },
   ];
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-800 bg-slate-950/90 backdrop-blur-md">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl">
       {/* Top Telemetry Ticker */}
-      <div className="flex items-center justify-between px-4 py-1 text-xs border-b border-slate-800/80 bg-slate-900/60 text-slate-400 font-mono">
+      <div className="flex items-center justify-between px-4 py-1.5 text-xs border-b border-slate-800/80 bg-gradient-to-r from-slate-900/80 via-cyan-950/20 to-slate-900/80 text-slate-400 font-mono">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-emerald-400">
             <span className="relative flex h-2 w-2">
