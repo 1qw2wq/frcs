@@ -1057,6 +1057,154 @@ export function getEngineLabel() {
   };
 }
 
+/**
+ * Live SQL connectivity probe — runs SELECT 1 (or equivalent) against the
+ * active backend so callers can verify the SQL server is reachable.
+ */
+export async function checkSqlConnection(): Promise<{
+  connected: boolean;
+  success: boolean;
+  status: 'connected' | 'error' | 'degraded';
+  engine: string;
+  serverType: string;
+  message: string;
+  latencyMs: number;
+  ping: string | null;
+  database: string;
+  tablesCount: number;
+  totalRows: number;
+  tables: { name: string; rowCount: number }[];
+  backend: ReturnType<typeof getEngineLabel>;
+  supabaseConfigured: boolean;
+  databaseUrlConfigured: boolean;
+  startClean: boolean;
+  checkedAt: string;
+  error?: string;
+}> {
+  const started = performance.now();
+  const info = getEngineLabel();
+  const databaseUrlConfigured = pg.isPostgresConfigured();
+  const supabaseConfigured = isSupabaseConfigured() || info.engine === 'postgres';
+  const checkedAt = new Date().toISOString();
+
+  const base = {
+    engine: info.engine,
+    backend: info,
+    supabaseConfigured,
+    databaseUrlConfigured,
+    startClean: Boolean((info as { startClean?: boolean }).startClean),
+    checkedAt,
+    database: 'frc_scouting_db',
+  };
+
+  try {
+    let ping: string | null = null;
+    let latencyMs = 0;
+
+    if (pg.isPostgresConfigured()) {
+      const pgResult = await pg.testConnection();
+      ping = 'SELECT 1 → ok';
+      latencyMs = pgResult.latencyMs;
+      const tables = (await getTableStats()).map((t) => ({
+        name: t.name,
+        rowCount: t.rowCount,
+      }));
+      const totalRows = tables.reduce((s, t) => s + t.rowCount, 0);
+      return {
+        ...base,
+        connected: true,
+        success: true,
+        status: 'connected',
+        serverType: 'Supabase PostgreSQL (DATABASE_URL pooler)',
+        message: `Live ping OK — Postgres pooler responded in ${latencyMs}ms`,
+        latencyMs,
+        ping,
+        tablesCount: tables.length,
+        totalRows,
+        tables,
+      };
+    }
+
+    if (isSupabaseConfigured()) {
+      const sb = getSupabase()! as any;
+      const t0 = performance.now();
+      const { error } = await sb.from('meta').select('key').limit(1);
+      latencyMs = Math.round((performance.now() - t0) * 100) / 100;
+      if (error && !/relation|does not exist|schema cache|Could not find/i.test(error.message || '')) {
+        throw new Error(error.message || 'Supabase ping failed');
+      }
+      ping = error ? `meta probe: ${error.message}` : 'Supabase REST → ok';
+      const tables = (await getTableStats()).map((t) => ({
+        name: t.name,
+        rowCount: t.rowCount,
+      }));
+      const totalRows = tables.reduce((s, t) => s + t.rowCount, 0);
+      return {
+        ...base,
+        connected: true,
+        success: true,
+        status: error ? 'degraded' : 'connected',
+        serverType: 'Supabase PostgreSQL (REST API)',
+        message: error
+          ? `Supabase reachable but schema incomplete: ${error.message}`
+          : `Live ping OK — Supabase REST responded in ${latencyMs}ms`,
+        latencyMs,
+        ping,
+        tablesCount: tables.length,
+        totalRows,
+        tables,
+      };
+    }
+
+    // SQLite fallback
+    const t0 = performance.now();
+    const db = sqlite.getDb();
+    const row = db.prepare('SELECT 1 AS ok').get() as { ok: number };
+    latencyMs = Math.round((performance.now() - t0) * 100) / 100;
+    if (!row || row.ok !== 1) throw new Error('SQLite SELECT 1 returned unexpected result');
+    ping = 'SELECT 1 → ok';
+    const tables = sqlite.getTableStats().map((t) => ({
+      name: t.name,
+      rowCount: t.rowCount,
+    }));
+    const totalRows = tables.reduce((s, t) => s + t.rowCount, 0);
+    return {
+      ...base,
+      connected: true,
+      success: true,
+      status: 'connected',
+      serverType: 'SQLite Relational Engine (local fallback)',
+      message: `Live ping OK — SQLite responded in ${latencyMs}ms. Set DATABASE_URL for cloud Postgres.`,
+      latencyMs,
+      ping,
+      tablesCount: tables.length,
+      totalRows,
+      tables,
+    };
+  } catch (err: any) {
+    const latencyMs = Math.round((performance.now() - started) * 100) / 100;
+    return {
+      ...base,
+      connected: false,
+      success: false,
+      status: 'error',
+      serverType:
+        info.engine === 'postgres'
+          ? 'Supabase PostgreSQL (DATABASE_URL)'
+          : info.engine === 'supabase'
+            ? 'Supabase PostgreSQL'
+            : 'SQLite Relational Engine',
+      message: err?.message || 'SQL connection check failed',
+      latencyMs,
+      ping: null,
+      tablesCount: 0,
+      totalRows: 0,
+      tables: [],
+      error: err?.message || String(err),
+    };
+  }
+}
+
 export async function getAllScoutingEntries(): Promise<MatchScoutingEntry[]> {
   if (pg.isPostgresConfigured()) return pg.getAllScoutingEntries();
   if (isSupabaseConfigured()) return supabaseGetAllScouting();

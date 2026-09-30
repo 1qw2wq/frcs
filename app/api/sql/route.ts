@@ -125,31 +125,26 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'test_connection') {
-      const info = getEngineLabel();
-      const tables = await getTableStats();
-      const totalRows = tables.reduce((sum, t) => sum + t.rowCount, 0);
-      const supabase = isSupabaseConfigured();
-      const isPg = info.engine === 'postgres';
+      const { checkSqlConnection } = await import('@/lib/dataStore');
+      const result = await checkSqlConnection();
       return NextResponse.json({
-        success: true,
-        status: 'connected',
-        message: isPg
-          ? `Connected to Supabase Postgres pooler (${info.url || 'DATABASE_URL'})`
-          : supabase
-            ? `Connected to Supabase API at ${info.url || 'configured project'}`
-            : 'SQLite SQL backend online. Set DATABASE_URL to your Supabase connection string for cloud SQL.',
-        serverType: isPg
-          ? 'Supabase PostgreSQL (DATABASE_URL)'
-          : supabase
-            ? 'Supabase PostgreSQL'
-            : 'SQLite Relational Engine',
-        latencyMs: Math.floor(Math.random() * 8) + 2,
-        tables: tables.length,
-        totalRows,
-        backend: info,
-        supabaseConfigured: supabase || isPg,
-        startClean: (info as any).startClean || false,
-      });
+        success: result.success,
+        connected: result.connected,
+        status: result.status,
+        message: result.message,
+        serverType: result.serverType,
+        latencyMs: result.latencyMs,
+        ping: result.ping,
+        tables: result.tablesCount,
+        totalRows: result.totalRows,
+        tableStats: result.tables,
+        backend: result.backend,
+        supabaseConfigured: result.supabaseConfigured,
+        databaseUrlConfigured: result.databaseUrlConfigured,
+        startClean: result.startClean,
+        checkedAt: result.checkedAt,
+        error: result.error,
+      }, { status: result.connected ? 200 : 503 });
     }
 
     if (action === 'clear_all') {
@@ -207,6 +202,29 @@ export async function GET(req: NextRequest) {
         'Content-Disposition': 'attachment; filename="frc_scouting_backup.sql"',
       },
     });
+  }
+
+  // Live connectivity check (same as /api/sql/status)
+  if (action === 'status' || action === 'health' || action === 'ping' || !action) {
+    const { checkSqlConnection } = await import('@/lib/dataStore');
+    const result = await checkSqlConnection();
+    const version =
+      result.engine === 'postgres'
+        ? 'Supabase PostgreSQL pooler (pg)'
+        : result.engine === 'supabase'
+          ? 'Supabase PostgreSQL v3.0'
+          : 'SQLite Compatible v3.0';
+    return NextResponse.json(
+      {
+        ...result,
+        version,
+        tablesCount: result.tablesCount,
+      },
+      {
+        status: result.connected ? 200 : 503,
+        headers: { 'Cache-Control': 'no-store, max-age=0' },
+      }
+    );
   }
 
   const tables = await getTableStats();
